@@ -1,0 +1,19 @@
+{
+  "name": "agent-ui-example-hydration",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Server rendering and takeover.",
+  "scripts": {
+    "build": "agent-ui build",
+    "build:dev": "agent-ui build --dev",
+    "dev": "agent-ui dev",
+    "serve": "agent-ui serve",
+    "check": "agent-ui check",
+    "start": "agent-ui build && agent-ui serve",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@ehtb/agent-ui": "file:../.."
+  }
+}

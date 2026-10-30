@@ -1,0 +1,7 @@
+body { font: 16px system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; color: #222; }
+#articles { list-style: none; padding: 0; }
+#articles li { padding: 0.5rem 0; border-bottom: 1px solid #eee; }
+#articles p { margin: 0.2rem 0 0; color: #555; }
+#search { width: 100%; box-sizing: border-box; margin-bottom: 1rem; }
+#hydration-status { background: #eef6ff; padding: 0.4rem 0.6rem; font-size: 0.85em; }
+[role=alert] { color: #b00020; }

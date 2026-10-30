@@ -1,0 +1,6 @@
+[
+  { "id": 1, "title": "Intro to agent-driven UIs", "category": "talk", "date": "2026-11-12", "place": "Main hall", "capacity": 120, "summary": "How a UI described as data changes the way we build.", "description": "A forty minute talk on UIs as JSON specs, typed actions and replayable sessions, followed by questions." },
+  { "id": 2, "title": "Hands-on: server rendering", "category": "workshop", "date": "2026-11-19", "place": "Lab 2", "capacity": 20, "summary": "Render pages on the server and take them over in the browser.", "description": "Bring a laptop. We build a page with real URLs, render it per request and watch the browser take over." },
+  { "id": 3, "title": "Friday social", "category": "social", "date": "2026-11-27", "place": "Rooftop", "capacity": 2, "summary": "Drinks and demos. Very small, very few seats.", "description": "An informal evening for everyone who came to the talks. Only two seats, so the sold-out path is easy to see." },
+  { "id": 4, "title": "Forms and validation clinic", "category": "workshop", "date": "2026-12-03", "place": "Lab 1", "capacity": 15, "summary": "Validate on the client and the server with one function.", "description": "Shared validation, progressive enhancement and what happens when JavaScript is late or missing." }
+]

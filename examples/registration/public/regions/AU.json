@@ -1,0 +1,26 @@
+[
+  {
+    "code": "new-south-wales",
+    "name": "New South Wales"
+  },
+  {
+    "code": "queensland",
+    "name": "Queensland"
+  },
+  {
+    "code": "south-australia",
+    "name": "South Australia"
+  },
+  {
+    "code": "tasmania",
+    "name": "Tasmania"
+  },
+  {
+    "code": "victoria",
+    "name": "Victoria"
+  },
+  {
+    "code": "western-australia",
+    "name": "Western Australia"
+  }
+]

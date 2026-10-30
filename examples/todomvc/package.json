@@ -1,0 +1,19 @@
+{
+  "name": "agent-ui-example-todomvc",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TodoMVC-style page: the official spec minus persistence and routing.",
+  "scripts": {
+    "build": "agent-ui build",
+    "build:dev": "agent-ui build --dev",
+    "dev": "agent-ui dev",
+    "serve": "agent-ui serve",
+    "benchmark": "node benchmark.mjs",
+    "start": "agent-ui build && agent-ui serve",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@ehtb/agent-ui": "file:../.."
+  }
+}

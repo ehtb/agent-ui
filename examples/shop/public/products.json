@@ -1,0 +1,8 @@
+[
+  { "id": 1, "title": "Trail backpack", "price": 89, "summary": "28 litres, waterproof, with a laptop sleeve.", "description": "A backpack for day hikes and commuting. Water resistant fabric, a padded back panel and a separate sleeve for a 15 inch laptop." },
+  { "id": 2, "title": "Insulated bottle", "price": 24, "summary": "Keeps drinks cold for a day or hot for twelve hours.", "description": "Double walled stainless steel, 750 ml, with a lid that does not leak when the bottle is on its side." },
+  { "id": 3, "title": "Merino socks", "price": 18, "summary": "Three pairs, cushioned sole.", "description": "A pack of three pairs of merino wool socks. They stay warm when wet and do not hold odours." },
+  { "id": 4, "title": "Headlamp", "price": 35, "summary": "400 lumens, rechargeable.", "description": "Three brightness modes and a red light for reading. A full charge lasts about eight hours on the middle mode." },
+  { "id": 5, "title": "Camp stove", "price": 59, "summary": "Folds to the size of a fist.", "description": "A compact gas stove that boils a litre of water in under four minutes. Gas canister not included." },
+  { "id": 6, "title": "Rain shell", "price": 120, "summary": "Light, breathable, packs into its own pocket.", "description": "A three layer shell with taped seams. It weighs 280 grams and packs into its own chest pocket." }
+]

@@ -1,0 +1,34 @@
+[
+  {
+    "code": "california",
+    "name": "California"
+  },
+  {
+    "code": "colorado",
+    "name": "Colorado"
+  },
+  {
+    "code": "florida",
+    "name": "Florida"
+  },
+  {
+    "code": "illinois",
+    "name": "Illinois"
+  },
+  {
+    "code": "new-york",
+    "name": "New York"
+  },
+  {
+    "code": "oregon",
+    "name": "Oregon"
+  },
+  {
+    "code": "texas",
+    "name": "Texas"
+  },
+  {
+    "code": "washington",
+    "name": "Washington"
+  }
+]

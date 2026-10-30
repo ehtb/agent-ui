@@ -1,0 +1,18 @@
+{
+  "name": "agent-ui-example-registration",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A complex form: fields that show, hide and fill each other, a collapsible panel, lists fetched from the server.",
+  "scripts": {
+    "build": "agent-ui build",
+    "build:dev": "agent-ui build --dev",
+    "dev": "agent-ui dev",
+    "serve": "agent-ui serve",
+    "start": "agent-ui build && agent-ui serve",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@ehtb/agent-ui": "file:../.."
+  }
+}

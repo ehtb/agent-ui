@@ -1,0 +1,18 @@
+{
+  "name": "agent-ui-example-with-fastify",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "agent-ui pages rendered inside a Fastify server that owns the routes and the API.",
+  "scripts": {
+    "build": "agent-ui build",
+    "check": "agent-ui check",
+    "start": "agent-ui build && node start.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@ehtb/agent-ui": "file:../..",
+    "fastify": "^5.0.0",
+    "@fastify/static": "^8.0.0"
+  }
+}

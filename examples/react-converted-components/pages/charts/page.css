@@ -1,0 +1,4 @@
+/* Chart.js sizes its canvas to the element it is in: give that element a height and a positioned box. */
+#revenue-chart { position: relative; height: 18rem; }
+.chart-values { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0 0; }
+.chart-values label { display: grid; gap: 0.25rem; font-size: 0.875rem; }

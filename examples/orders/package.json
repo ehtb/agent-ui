@@ -1,0 +1,18 @@
+{
+  "name": "agent-ui-example-orders",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A multistep flow: customer, then orders, then shipment.",
+  "scripts": {
+    "build": "agent-ui build",
+    "build:dev": "agent-ui build --dev",
+    "dev": "agent-ui dev",
+    "serve": "agent-ui serve",
+    "start": "agent-ui build && agent-ui serve",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@ehtb/agent-ui": "file:../.."
+  }
+}

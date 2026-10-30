@@ -1,0 +1,8 @@
+/* Tailwind v4 input. The generated file is pages/page.css (npm run css); do not edit that one. */
+@import "tailwindcss";
+/* Where to look for class names: the spec — and the classes — lives in pages/view.js. */
+@source "./pages/view.js";
+
+body {
+  @apply bg-slate-50;
+}

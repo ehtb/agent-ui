@@ -1,0 +1,10 @@
+[
+  { "id": 1, "name": "Ada Lovelace", "email": "ada@example.org", "team": "research", "tags": ["math", "notes"] },
+  { "id": 2, "name": "Grace Hopper", "email": "grace@example.org", "team": "engineering", "tags": ["compilers", "navy"] },
+  { "id": 3, "name": "Alan Turing", "email": "alan@example.org", "team": "research", "tags": ["logic", "crypto", "machines"] },
+  { "id": 4, "name": "Margaret Hamilton", "email": "margaret@example.org", "team": "engineering", "tags": ["software", "apollo"] },
+  { "id": 5, "name": "Katherine Johnson", "email": "katherine@example.org", "team": "research", "tags": ["orbits"] },
+  { "id": 6, "name": "Barbara Liskov", "email": "barbara@example.org", "team": "engineering", "tags": [] },
+  { "id": 7, "name": "Dorothy Vaughan", "email": "dorothy@example.org", "team": "operations", "tags": ["fortran", "leadership"] },
+  { "id": 8, "name": "Edsger Dijkstra", "email": "edsger@example.org", "team": "research", "tags": ["graphs", "semaphores"] }
+]

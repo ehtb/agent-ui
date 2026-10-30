@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.output-test/
+package-lock.json
+pages/page.css
+.tailwind/

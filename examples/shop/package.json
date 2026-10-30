@@ -1,0 +1,19 @@
+{
+  "name": "agent-ui-example-shop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Code splitting: list, product and checkout pages that share a layout and components, with the cart on the server.",
+  "scripts": {
+    "build": "agent-ui build",
+    "build:dev": "agent-ui build --dev",
+    "dev": "agent-ui dev",
+    "serve": "agent-ui serve",
+    "check": "agent-ui check",
+    "start": "agent-ui build && agent-ui serve",
+    "test": "node --test --test-concurrency=1"
+  },
+  "dependencies": {
+    "@ehtb/agent-ui": "file:../.."
+  }
+}

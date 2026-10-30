@@ -1,0 +1,52 @@
+[
+  {
+    "code": "NL",
+    "name": "Netherlands",
+    "eu": true
+  },
+  {
+    "code": "DE",
+    "name": "Germany",
+    "eu": true
+  },
+  {
+    "code": "FR",
+    "name": "France",
+    "eu": true
+  },
+  {
+    "code": "ES",
+    "name": "Spain",
+    "eu": true
+  },
+  {
+    "code": "SE",
+    "name": "Sweden",
+    "eu": true
+  },
+  {
+    "code": "GB",
+    "name": "United Kingdom",
+    "eu": false
+  },
+  {
+    "code": "US",
+    "name": "United States",
+    "eu": false
+  },
+  {
+    "code": "CA",
+    "name": "Canada",
+    "eu": false
+  },
+  {
+    "code": "AU",
+    "name": "Australia",
+    "eu": false
+  },
+  {
+    "code": "JP",
+    "name": "Japan",
+    "eu": false
+  }
+]

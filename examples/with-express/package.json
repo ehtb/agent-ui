@@ -1,0 +1,17 @@
+{
+  "name": "agent-ui-example-with-express",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "agent-ui pages rendered inside an Express server that owns the routes and the API.",
+  "scripts": {
+    "build": "agent-ui build",
+    "check": "agent-ui check",
+    "start": "agent-ui build && node start.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@ehtb/agent-ui": "file:../..",
+    "express": "^5.1.0"
+  }
+}

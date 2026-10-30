@@ -1,0 +1,6 @@
+[
+  { "id": 1, "title": "Why the UI is data", "summary": "A closed grammar can be validated, diffed and patched.", "body": "A UI described as JSON can be checked before it runs. Mistakes are reported with a path instead of rendering wrongly." },
+  { "id": 2, "title": "Actions are the only writers", "summary": "One choke point gives logging, replay and tests for free.", "body": "State changes only through named, typed actions. That makes every session replayable from its action log." },
+  { "id": 3, "title": "Rendering on the server", "summary": "The same code produces the first paint and the live app.", "body": "The server runs the same create() the browser runs, so markup and behaviour cannot drift apart." },
+  { "id": 4, "title": "Real URLs", "summary": "Shareable links, working back button, crawlable pages.", "body": "History routing needs a server that returns the page for every route. This example's server also renders it." }
+]

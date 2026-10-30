@@ -1,0 +1,26 @@
+{
+  "name": "agent-ui-example-with-typescript",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TypeScript and zod: one zod schema per kind of data gives the TypeScript type, checks the responses of the resources and the requests of the server.",
+  "scripts": {
+    "build": "npm run vendor && agent-ui build",
+    "build:dev": "npm run vendor && agent-ui build --dev",
+    "dev": "agent-ui dev",
+    "serve": "agent-ui serve",
+    "check": "agent-ui check && tsc -p .",
+    "typecheck": "tsc -p .",
+    "start": "npm run vendor && agent-ui build && agent-ui serve",
+    "test": "npm run vendor && node --test",
+    "vendor": "esbuild vendor/zod-entry.js --bundle --format=esm --outfile=vendor/zod.js"
+  },
+  "dependencies": {
+    "@ehtb/agent-ui": "file:../..",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.0"
+  }
+}

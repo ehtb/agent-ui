@@ -1,0 +1,6 @@
+[
+  { "id": 1, "name": "Field notebook", "price": 9, "description": "Dotted pages, sewn binding." },
+  { "id": 2, "name": "Brass pencil", "price": 14, "description": "Takes a standard 2 mm lead." },
+  { "id": 3, "name": "Desk lamp", "price": 48, "description": "Warm light, one switch." },
+  { "id": 4, "name": "Canvas tote", "price": 22, "description": "Holds a laptop and a lunch." }
+]

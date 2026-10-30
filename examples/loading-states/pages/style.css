@@ -1,0 +1,10 @@
+body { font-family: system-ui, sans-serif; margin: 0; color: #1b1f24; background: #fafafa; }
+main { max-width: 42rem; margin: 0 auto; padding: 1rem; }
+nav { display: flex; gap: 1rem; }
+nav a { color: #0b57d0; }
+.page-state { font-size: 0.85rem; color: #555; }
+.skeleton { list-style: none; padding: 0; }
+.skeleton li { height: 1.4rem; margin: 0.6rem 0; border-radius: 4px; background: linear-gradient(90deg, #e6e6e6, #f3f3f3, #e6e6e6); }
+.refreshing { font-size: 0.85rem; color: #8a5a00; }
+.error { color: #a40e26; }
+.meta { color: #555; }

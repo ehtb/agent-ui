@@ -1,0 +1,4 @@
+#products { list-style: none; padding: 0; display: grid; gap: 0.8rem; }
+#products li { border: 1px solid #ddd; border-radius: 6px; padding: 0.6rem 0.8rem; }
+#products p, #product-view p { margin: 0.2rem 0; }
+#search { width: 100%; box-sizing: border-box; margin-bottom: 0.8rem; }

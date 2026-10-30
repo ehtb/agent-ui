@@ -1,0 +1,157 @@
+{
+  "name": "@ehtb/agent-ui",
+  "version": "0.1.0",
+  "description": "A frontend framework for agents to write, check and maintain: the UI is a JSON spec, state is plain data, behavior goes through named, typed actions. No dependencies.",
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "main": "./src/ui.js",
+  "types": "./src/ui.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/ui.d.ts",
+      "default": "./src/ui.js"
+    },
+    "./url-pattern": {
+      "types": "./src/url-pattern.d.ts",
+      "default": "./src/url-pattern.js"
+    },
+    "./resources": {
+      "types": "./src/resources.d.ts",
+      "default": "./src/resources.js"
+    },
+    "./window-events": {
+      "types": "./src/window-events.d.ts",
+      "default": "./src/window-events.js"
+    },
+    "./head": {
+      "types": "./src/head.d.ts",
+      "default": "./src/head.js"
+    },
+    "./spec-tools": {
+      "types": "./src/spec-tools.d.ts",
+      "default": "./src/spec-tools.js"
+    },
+    "./sync-apps": {
+      "types": "./src/sync-apps.d.ts",
+      "default": "./src/sync-apps.js"
+    },
+    "./memoize": {
+      "types": "./src/memoize.d.ts",
+      "default": "./src/memoize.js"
+    },
+    "./mount-element": {
+      "types": "./src/mount-element.d.ts",
+      "default": "./src/mount-element.js"
+    },
+    "./error-messages": {
+      "types": "./src/error-messages.d.ts",
+      "default": "./src/error-messages.js"
+    },
+    "./spec": {
+      "types": "./src/spec.d.ts",
+      "default": "./src/spec.js"
+    },
+    "./components": {
+      "types": "./src/components.d.ts",
+      "default": "./src/components.js"
+    },
+    "./shell": {
+      "types": "./src/shell.d.ts",
+      "default": "./src/shell.js"
+    },
+    "./navigation": {
+      "types": "./src/navigation.d.ts",
+      "default": "./src/navigation.js"
+    },
+    "./pages": {
+      "types": "./src/pages.d.ts",
+      "default": "./src/pages.js"
+    },
+    "./server": {
+      "types": "./server/render-page.d.ts",
+      "default": "./server/render-page.js"
+    },
+    "./hydrate": {
+      "types": "./src/hydrate.d.ts",
+      "default": "./src/hydrate.js"
+    },
+    "./validate": {
+      "types": "./src/validate.d.ts",
+      "default": "./src/validate.js"
+    },
+    "./devtools": {
+      "types": "./src/devtools.d.ts",
+      "default": "./src/devtools.js"
+    },
+    "./build": {
+      "types": "./build/index.d.mts",
+      "default": "./build/index.mjs"
+    },
+    "./build/*.mjs": {
+      "types": "./build/*.d.mts",
+      "default": "./build/*.mjs"
+    },
+    "./server/*.mjs": {
+      "types": "./server/*.d.mts",
+      "default": "./server/*.mjs"
+    },
+    "./cli/*.mjs": {
+      "types": "./cli/*.d.mts",
+      "default": "./cli/*.mjs"
+    },
+    "./testing/*.mjs": {
+      "types": "./test/support/*.d.mts",
+      "default": "./test/support/*.mjs"
+    },
+    "./package.json": "./package.json",
+    "./spec-schema": {
+      "types": "./src/spec-schema.d.ts",
+      "default": "./src/spec-schema.js"
+    },
+    "./messages": {
+      "types": "./src/messages.d.ts",
+      "default": "./src/messages.js"
+    },
+    "./http-headers": {
+      "types": "./src/http-headers.d.ts",
+      "default": "./src/http-headers.js"
+    }
+  },
+  "bin": {
+    "agent-ui": "./bin/agent-ui.mjs"
+  },
+  "files": [
+    "src",
+    "server",
+    "build",
+    "cli",
+    "bin",
+    "cookbook",
+    "docs",
+    "skills",
+    "test/support",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "frontend",
+    "framework",
+    "agents",
+    "llm",
+    "ssr",
+    "hydration",
+    "no-dependencies"
+  ],
+  "scripts": {
+    "test": "npm run test:framework && npm run test:examples",
+    "test:framework": "node --test test/*.test.mjs",
+    "schema": "node cli/schema.mjs docs/spec.schema.json",
+    "typecheck": "tsc -p test/types",
+    "test:examples": "node --test test/examples/*.test.mjs && node test/run-examples.mjs",
+    "example": "node test/run-examples.mjs run"
+  }
+}

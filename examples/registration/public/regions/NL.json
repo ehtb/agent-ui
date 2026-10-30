@@ -1,0 +1,50 @@
+[
+  {
+    "code": "drenthe",
+    "name": "Drenthe"
+  },
+  {
+    "code": "flevoland",
+    "name": "Flevoland"
+  },
+  {
+    "code": "friesland",
+    "name": "Friesland"
+  },
+  {
+    "code": "gelderland",
+    "name": "Gelderland"
+  },
+  {
+    "code": "groningen",
+    "name": "Groningen"
+  },
+  {
+    "code": "limburg",
+    "name": "Limburg"
+  },
+  {
+    "code": "noord-brabant",
+    "name": "Noord-Brabant"
+  },
+  {
+    "code": "noord-holland",
+    "name": "Noord-Holland"
+  },
+  {
+    "code": "overijssel",
+    "name": "Overijssel"
+  },
+  {
+    "code": "utrecht",
+    "name": "Utrecht"
+  },
+  {
+    "code": "zeeland",
+    "name": "Zeeland"
+  },
+  {
+    "code": "zuid-holland",
+    "name": "Zuid-Holland"
+  }
+]

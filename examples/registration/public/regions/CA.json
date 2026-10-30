@@ -1,0 +1,42 @@
+[
+  {
+    "code": "alberta",
+    "name": "Alberta"
+  },
+  {
+    "code": "british-columbia",
+    "name": "British Columbia"
+  },
+  {
+    "code": "manitoba",
+    "name": "Manitoba"
+  },
+  {
+    "code": "new-brunswick",
+    "name": "New Brunswick"
+  },
+  {
+    "code": "newfoundland-and-labrador",
+    "name": "Newfoundland and Labrador"
+  },
+  {
+    "code": "nova-scotia",
+    "name": "Nova Scotia"
+  },
+  {
+    "code": "ontario",
+    "name": "Ontario"
+  },
+  {
+    "code": "prince-edward-island",
+    "name": "Prince Edward Island"
+  },
+  {
+    "code": "quebec",
+    "name": "Quebec"
+  },
+  {
+    "code": "saskatchewan",
+    "name": "Saskatchewan"
+  }
+]

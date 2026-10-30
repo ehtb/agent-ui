@@ -1,0 +1,98 @@
+:root{--bg:#fff;--fg:#0f172a;--muted:#64748b;--border:#e2e8f0;--primary:#0f172a;--primary-fg:#f8fafc;--secondary:#f1f5f9;--danger:#dc2626;--radius:.5rem}
+*{box-sizing:border-box}
+body{margin:0;background:#f8fafc;color:var(--fg);font:15px/1.5 system-ui}
+main{max-width:40rem;margin:2rem auto;padding:0 1rem;display:grid;gap:1rem}
+h1{margin:0}
+.row{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.ui-hint{margin:.25rem 0 0;color:var(--muted);font-size:.875rem}
+
+.ui-card{background:var(--bg);border:1px solid var(--border);border-radius:calc(var(--radius) + 4px)}
+.ui-card-header{padding:1.25rem 1.25rem 0}
+.ui-card-title{font-weight:600;line-height:1}
+.ui-card-description{margin-top:.25rem;color:var(--muted);font-size:.875rem}
+.ui-card-header{display:grid;grid-template-columns:1fr auto}.ui-card-header>*{grid-column:1}.ui-card-action{grid-column:2!important;grid-row:1/span 2;justify-self:end}
+.ui-card-content{padding:1.25rem;display:grid;gap:.75rem}
+.ui-card-footer{padding:0 1.25rem 1.25rem}
+
+.ui-button{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border:1px solid transparent;border-radius:var(--radius);font:inherit;font-weight:500;cursor:pointer}
+.ui-button:disabled{opacity:.5;cursor:not-allowed}
+.ui-button--md{height:2.25rem;padding:0 1rem}
+.ui-button--sm{height:2rem;padding:0 .75rem;font-size:.875rem}
+.ui-button--lg{height:2.5rem;padding:0 2rem}
+.ui-button--xs{height:1.5rem;padding:0 .5rem;font-size:.75rem}
+.ui-button--icon{height:2.25rem;width:2.25rem}.ui-button--icon-xs{height:1.5rem;width:1.5rem}.ui-button--icon-sm{height:2rem;width:2rem}.ui-button--icon-lg{height:2.5rem;width:2.5rem}
+.ui-button--default{background:var(--primary);color:var(--primary-fg)}
+.ui-button--secondary{background:var(--secondary);color:var(--fg)}
+.ui-button--outline{background:var(--bg);border-color:var(--border);color:var(--fg)}
+.ui-button--ghost{background:transparent;color:var(--fg)}
+.ui-button--destructive{background:var(--danger);color:#fff}
+.ui-button--link{background:transparent;color:var(--primary);text-decoration:underline;padding:0}
+
+.ui-badge{display:inline-flex;align-items:center;border:1px solid transparent;border-radius:999px;padding:.125rem .625rem;font-size:.75rem;font-weight:600}
+.ui-badge--default{background:var(--primary);color:var(--primary-fg)}
+.ui-badge--secondary{background:var(--secondary);color:var(--fg)}
+.ui-badge--outline{border-color:var(--border);color:var(--fg)}
+.ui-badge--destructive{background:var(--danger);color:#fff}
+.ui-badge--ghost{color:var(--fg)}.ui-badge--link{color:var(--primary);text-decoration:underline}
+
+.ui-alert{display:flex;flex-wrap:wrap;gap:.25rem 1rem;align-items:center;justify-content:space-between;border:1px solid var(--border);border-radius:var(--radius);padding:.75rem 1rem}
+.ui-alert--destructive{border-color:var(--danger);color:var(--danger)}
+.ui-alert-title{font-weight:600;flex-basis:100%}
+.ui-alert-description{opacity:.85}
+
+.ui-label{font-size:.875rem;font-weight:500}
+.ui-input{height:2.25rem;width:100%;border:1px solid var(--border);border-radius:var(--radius);padding:0 .75rem;font:inherit;background:var(--bg)}
+.ui-input[aria-invalid=true]{border-color:var(--danger)}
+.ui-checkbox{width:1rem;height:1rem}
+.ui-field-error{margin:0;color:var(--danger);font-size:.875rem}
+.ui-checkbox[data-state=checked]{accent-color:var(--primary)}
+
+/* popover: the layer centers the content; the backdrop is the outside-click target and the CSS stand-in for a portal */
+.ui-popover{position:relative;display:inline-block}
+.ui-popover-trigger,.ui-date-trigger,.ui-calendar-nav{height:2.25rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);font:inherit;cursor:pointer}
+.ui-popover-trigger,.ui-date-trigger{padding:0 .75rem}
+.ui-popover-layer{position:fixed;inset:0;z-index:20;display:grid;place-items:center}
+.ui-popover-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.35)}
+.ui-popover-content{position:relative;display:grid;gap:.125rem;min-width:12rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 .5rem 1.5rem rgba(15,23,42,.25);padding:.375rem}
+.ui-popover-choice{border:0;background:transparent;text-align:left;padding:.5rem .75rem;border-radius:calc(var(--radius) - 2px);font:inherit;cursor:pointer}
+.ui-popover-choice:hover{background:var(--secondary)}
+.ui-popover-choice[aria-pressed=true]{font-weight:600}
+
+/* combobox: the input, and the listbox under it. The backdrop is the outside-click target; the input and the options
+   are painted above it (z-index 10 over 9), so the list can stay open while a visitor types and chooses. */
+.ui-combobox{position:relative}
+.ui-combobox-backdrop{position:fixed;inset:0;z-index:9}
+.ui-combobox-input{position:relative;z-index:10;height:2.25rem;width:100%;border:1px solid var(--border);border-radius:var(--radius);padding:0 .75rem;font:inherit;background:var(--bg)}
+.ui-combobox-list{position:absolute;z-index:10;left:0;right:0;margin:.25rem 0 0;padding:.25rem;list-style:none;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 .5rem 1.5rem rgba(15,23,42,.15);max-height:14rem;overflow:auto}
+.ui-combobox-option{padding:.5rem .75rem;border-radius:calc(var(--radius) - 2px);cursor:pointer}
+.ui-combobox-option[data-active]{background:var(--secondary)}
+.ui-combobox-option[aria-selected=true]{font-weight:600}
+.ui-combobox-empty{position:absolute;z-index:10;left:0;right:0;margin:.25rem 0 0;padding:.5rem .75rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--muted)}
+
+/* date picker: the month grid, positioned under its trigger. The backdrop is the outside-click target; the trigger
+   and the grid sit above it (z-index 10 over 9). */
+.ui-date-picker{position:relative;display:inline-block}
+.ui-date-backdrop{position:fixed;inset:0;z-index:9}
+.ui-date-trigger{position:relative;z-index:10}
+.ui-calendar{position:absolute;z-index:10;margin-top:.25rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 .5rem 1.5rem rgba(15,23,42,.15);padding:.75rem}
+.ui-calendar-header{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.5rem}
+.ui-calendar-month{font-weight:600}
+.ui-calendar-nav{width:2.25rem;padding:0}
+.ui-calendar-grid{display:grid;gap:2px}
+.ui-calendar-weekdays,.ui-calendar-row{display:grid;grid-template-columns:repeat(7,2rem);gap:2px}
+.ui-calendar-weekday{text-align:center;color:var(--muted);font-size:.75rem}
+.ui-calendar-day{height:2rem;border:0;border-radius:calc(var(--radius) - 2px);background:transparent;font:inherit;cursor:pointer}
+.ui-calendar-day:hover{background:var(--secondary)}
+.ui-calendar-day--outside{opacity:.45}
+.ui-calendar-day--selected{background:var(--primary);color:var(--primary-fg)}
+
+/* sortable list: a pointer drag (touch-action:none so a touch drag does not scroll); data-dragging is the row being
+   moved; it follows the pointer through --follow-x / --follow-y, which the runtime sets (the `follow` prop), and lets
+   the pointer through to the rows beneath so they see pointerover */
+.ui-sortable{list-style:none;margin:0;padding:0;display:grid;gap:.5rem;user-select:none}
+.ui-sortable-item{display:flex;align-items:center;gap:.5rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);padding:.5rem .75rem;cursor:pointer}
+.ui-sortable-item[data-dragging]{position:relative;z-index:1;border-color:var(--primary);box-shadow:0 8px 20px rgba(15,23,42,.2);transform:translate(var(--follow-x,0px),var(--follow-y,0px));pointer-events:none}
+.ui-sortable-grip{border:0;background:transparent;font:inherit;cursor:grab;padding:.25rem;touch-action:none}
+.ui-sortable-grip:active{cursor:grabbing}
+.ui-sortable-title{flex:1}
+.ui-sortable-position{color:var(--muted);font-size:.75rem}

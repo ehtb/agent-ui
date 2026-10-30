@@ -1,0 +1,536 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agent-ui spec",
+  "$ref": "#/$defs/node",
+  "$defs": {
+    "node": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/binding"
+        },
+        {
+          "$ref": "#/$defs/element"
+        },
+        {
+          "$ref": "#/$defs/each"
+        },
+        {
+          "$ref": "#/$defs/when"
+        }
+      ]
+    },
+    "nodes": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/node"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node"
+          },
+          "minItems": 0
+        }
+      ]
+    },
+    "binding": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "pattern": "^[a-z][A-Za-z0-9]*\\.[a-z][A-Za-z0-9]*(\\.[^.]+)*$"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "item": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "item"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "row": {
+              "type": "string",
+              "pattern": "^[a-z][A-Za-z0-9]*(\\..+)?$"
+            }
+          },
+          "required": [
+            "row"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "rowState": {
+              "type": "string",
+              "pattern": "^[a-z][A-Za-z0-9]*\\.[a-z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)?$"
+            }
+          },
+          "required": [
+            "rowState"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "not": {
+              "anyOf": [
+                {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/binding"
+                }
+              ]
+            }
+          },
+          "required": [
+            "not"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "length": {
+              "anyOf": [
+                {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/binding"
+                }
+              ]
+            }
+          },
+          "required": [
+            "length"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "equals": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/binding"
+                  }
+                ]
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": [
+            "equals"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "greaterThan": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/binding"
+                  }
+                ]
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": [
+            "greaterThan"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "lessThan": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/binding"
+                  }
+                ]
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": [
+            "lessThan"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "and": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/binding"
+                  }
+                ]
+              },
+              "minItems": 2
+            }
+          },
+          "required": [
+            "and"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "or": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/binding"
+                  }
+                ]
+              },
+              "minItems": 2
+            }
+          },
+          "required": [
+            "or"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "join": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/binding"
+                  }
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "join"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "handlers": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/handler"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/handler"
+          },
+          "minItems": 2
+        }
+      ]
+    },
+    "handler": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "prefixItems": [
+        {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]*\\.[a-z][A-Za-z0-9]*$"
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              {
+                "type": "object"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "preventDefault": {
+              "type": "boolean"
+            },
+            "stopPropagation": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "element": {
+      "type": "object",
+      "properties": {
+        "tag": {
+          "enum": [
+            "div",
+            "span",
+            "p",
+            "h1",
+            "h2",
+            "h3",
+            "ul",
+            "ol",
+            "li",
+            "button",
+            "input",
+            "label",
+            "a",
+            "section",
+            "header",
+            "footer",
+            "main",
+            "nav",
+            "form",
+            "select",
+            "option",
+            "textarea",
+            "strong",
+            "em",
+            "b",
+            "i",
+            "small",
+            "code",
+            "pre",
+            "blockquote",
+            "hr",
+            "br",
+            "img",
+            "table",
+            "thead",
+            "tbody",
+            "tfoot",
+            "tr",
+            "th",
+            "td",
+            "caption",
+            "dl",
+            "dt",
+            "dd",
+            "details",
+            "summary",
+            "dialog",
+            "aside",
+            "article",
+            "fieldset",
+            "legend",
+            "figure",
+            "figcaption",
+            "progress",
+            "time"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "props": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              {
+                "$ref": "#/$defs/binding"
+              }
+            ]
+          }
+        },
+        "classes": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/binding"
+          }
+        },
+        "on": {
+          "type": "object",
+          "patternProperties": {
+            "^(click|dblclick|pointerdown|pointermove|pointerup|pointercancel|pointerover|pointerout|input|change|keydown|keyup|focusin|focusout|submit)(\\.[^.]+)?$": {
+              "$ref": "#/$defs/handlers"
+            }
+          },
+          "additionalProperties": false
+        },
+        "transition": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "children": {
+          "$ref": "#/$defs/nodes"
+        }
+      },
+      "required": [
+        "tag"
+      ],
+      "additionalProperties": false
+    },
+    "each": {
+      "type": "object",
+      "properties": {
+        "each": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][A-Za-z0-9]*\\.[a-z][A-Za-z0-9]*(\\.[^.]+)*$"
+            },
+            {
+              "$ref": "#/$defs/binding"
+            }
+          ]
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "as": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]*$"
+        },
+        "template": {
+          "$ref": "#/$defs/element"
+        }
+      },
+      "required": [
+        "each",
+        "key",
+        "template"
+      ],
+      "additionalProperties": false
+    },
+    "when": {
+      "type": "object",
+      "properties": {
+        "when": {
+          "$ref": "#/$defs/binding"
+        },
+        "children": {
+          "$ref": "#/$defs/nodes"
+        },
+        "otherwise": {
+          "$ref": "#/$defs/nodes"
+        }
+      },
+      "required": [
+        "when"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

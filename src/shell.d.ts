@@ -1,0 +1,36 @@
+import type { Namespace, Plugin, SpecNode } from './ui.js';
+
+export interface ShellRead {
+  /** Qualified keys of the page's app. */
+  watch: string[];
+  /** A qualified action of the shell ("frame.setCartCount"). */
+  action: string;
+  /** Each argument of the action -> the watched key that supplies it. */
+  args: Record<string, string>;
+}
+export interface ShellDefinition {
+  /** The name view.js repeats (`export const shell = { name, view }`). */
+  name: string;
+  /** What the shell keeps in state. "route" is reserved: route.path is the path of the page that is showing. */
+  namespaces?: Record<string, Namespace>;
+  /** True makes the browser console show what the shell's app does. Default false. */
+  debug?: boolean;
+  /** What the shell needs from outside its state, for example [withNavigation]. */
+  plugins?: ((environment: { root: any; win: any; fetchFunction: any; dev: boolean; shellName: string }) => Plugin)[];
+  /** What the shell shows of the page, one way (syncApps). Checked when a page starts with the shell. */
+  reads?: ShellRead[];
+}
+export interface Shell {
+  kind: 'shell';
+  name: string;
+  /** Every namespace the shell's app has (its own and `route`). */
+  namespaces: Record<string, Namespace>;
+  createApp(environment: { root: any; win: any; fetchFunction: any; dev?: boolean }, view: SpecNode): any;
+  /** What the shell adds to the route namespace of its pages: route.destination and route.go. */
+  route: { state: Record<string, unknown>; actions: Record<string, unknown> };
+  /** The first page of a browser document, with the shell around it. */
+  start(entry: any, environment: any): { entry: any; ui: any; shellApp: any; slot: any };
+  connect(pageApp: any, shellApp: any, win: any): () => void;
+}
+/** The shell's behavior, imported by the page.js of every page that uses it. Its content is `{ name, view }` exported from view.js. */
+export function defineShell(definition: ShellDefinition): Shell;

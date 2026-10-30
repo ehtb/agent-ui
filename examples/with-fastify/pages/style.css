@@ -1,0 +1,4 @@
+body { font: 16px/1.5 system-ui, sans-serif; max-width: 36rem; margin: 2rem auto; padding: 0 1rem; }
+#entries { padding-left: 1.2rem; }
+#entry-form { display: grid; gap: 0.5rem; margin-top: 1rem; }
+[role=alert] { color: #b00020; }
