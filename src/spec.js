@@ -136,3 +136,15 @@ export const figure = createBuilder('figure');
 export const figcaption = createBuilder('figcaption');
 export const progress = createBuilder('progress');
 export const time = createBuilder('time');
+// SVG, for icons and simple drawings (src/grammar.js): the shapes stand inside an svg, and an svg says what it shows (aria-label with
+// role: 'img') or that it is decoration ('aria-hidden': 'true').
+export const svg = createBuilder('svg');
+export const g = createBuilder('g');
+export const path = createBuilder('path');
+export const circle = createBuilder('circle');
+export const ellipse = createBuilder('ellipse');
+export const rect = createBuilder('rect');
+export const line = createBuilder('line');
+export const polyline = createBuilder('polyline');
+export const polygon = createBuilder('polygon');
+export const use = createBuilder('use');

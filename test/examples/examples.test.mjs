@@ -27,7 +27,10 @@ test('every example is a standalone project: own package.json, framework as a de
     assert.equal(exampleManifest.dependencies['@ehtb/agent-ui'], 'file:../..', `${name}: depends on the framework as a package`);
     assert.equal(exampleManifest.type, 'module', name);
     assert.ok(exampleManifest.scripts.test, `${name}: has its own test script`);
-    assert.ok(existsSync(join(directory, 'build.config.mjs')) && existsSync(join(directory, 'README.md')), `${name}: own build config and README`);
+    assert.ok(existsSync(join(directory, 'README.md')), `${name}: own README`);
+    // An example that uses the agent-ui command has its own build config; one that uses the framework as a library (islands) has no build.
+    const usesCommand = Object.values(exampleManifest.scripts).some((script) => /\bagent-ui\b/.test(script));
+    assert.equal(existsSync(join(directory, 'build.config.mjs')), usesCommand, `${name}: ${usesCommand ? 'uses the agent-ui command, so it has its own build.config.mjs' : 'has no agent-ui script, so it has no build.config.mjs'}`);
     for (const file of sourceFilesOf(directory)) {
       // Lines that are comments are not imports (a converted example may quote the original it came from).
       const text = readFileSync(file, 'utf8').split('\n').filter((line) => !line.trimStart().startsWith('//')).join('\n');

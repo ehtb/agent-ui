@@ -1,0 +1,14 @@
+{
+  "name": "agent-ui-example-islands",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "agent-ui as a library: two apps rendered into a page the host owns, no pages/ folder and no build, connected with syncApps.",
+  "scripts": {
+    "start": "node start.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@ehtb/agent-ui": "file:../.."
+  }
+}

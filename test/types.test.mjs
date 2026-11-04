@@ -44,6 +44,7 @@ import { browserEnvironment } from '@ehtb/agent-ui/hydrate';
 import { createSpecSchema } from '@ehtb/agent-ui/spec-schema';
 import { frameworkBuildOptions } from '@ehtb/agent-ui/build/presets.mjs';
 import { build, prerender, discoverPages } from '@ehtb/agent-ui/build';
+import { build as buildStage } from '@ehtb/agent-ui/build/build.mjs';
 import { mountDevtools } from '@ehtb/agent-ui/devtools';
 import { loadConfig, type BuildConfig } from '@ehtb/agent-ui/build/config.mjs';
 import { createSsrHandler } from '@ehtb/agent-ui/server/ssr-handler.mjs';
@@ -71,7 +72,7 @@ const { ui } = mountSpec({ spec: 'x', namespaces: { a: { state: { x: 1 } } } });
 cached({ id: 1 });
 flushAsync(ui);
 fireEvent(createRoot(), 'click');
-export { build, prerender, discoverPages, mountDevtools, app, validate, grammar, validateAgain, resources, windowEvents, patchSpec, listIds, expandComponents, definePage, fail, didYouMean, checkResponseHeaders, mergeResponseHeaders, renderPage, browserEnvironment, createSpecSchema, matchesSchema, config };
+export { build, buildStage, prerender, discoverPages, mountDevtools, app, validate, grammar, validateAgain, resources, windowEvents, patchSpec, listIds, expandComponents, definePage, fail, didYouMean, checkResponseHeaders, mergeResponseHeaders, renderPage, browserEnvironment, createSpecSchema, matchesSchema, config };
 // @ts-expect-error a build option that does not exist
 const bad: BuildConfig = { outDirr: 'dist' };
 export { bad };

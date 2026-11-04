@@ -192,7 +192,7 @@ test('unknown options of app() and validate() are refused, an old state/derive/a
   const spec = { tag: 'p', children: 'x' };
   assert.deepEqual(validate(spec, { namespces: {} }), ['validate: unknown context key "namespces". Did you mean "namespaces"? Allowed keys: namespaces, initialState']);
   assert.match(validate(spec, { state: {}, actions: {} })[0], /unknown context key "state"\. Allowed keys: namespaces, initialState$/);
-  assert.throws(() => app({ dev: true, state: {}, spec, root: createRoot() }), /app: unknown option "state"\. .*Allowed options: namespaces, initialState, spec, root, plugins, dev, debug$/);
+  assert.throws(() => app({ dev: true, state: {}, spec, root: createRoot() }), /app: unknown option "state"\. .*Allowed options: namespaces, initialState, spec, root, plugins, dev, debug, basePath$/);
   assert.throws(() => app({ dev: true, namespces: {}, spec, root: createRoot() }), /app: unknown option "namespces"\. Did you mean "namespaces"\?/);
 });
 

@@ -21,8 +21,11 @@ test('the built page: runtime in its own chunk, entry chunk, CSS, lazy devtools 
     assert.ok(!chunks.validator);
     assert.ok(!chunks.index.modules.some((path) => path.endsWith('src/ui.js')));
     assert.ok(pages.index.chunksLoadedAtStartup.includes('agent-ui'));
-    // The page and the framework code it uses are bundled into its own chunk (it is the only page); devtools is fetched on demand.
-    assert.ok(chunks.index.modules.some((path) => path.endsWith('src/pages.js')));
+    // The framework code the page uses beyond the runtime is a chunk of its own, apart from the page's code, so a change to the app
+    // leaves it cached; devtools is fetched on demand.
+    assert.ok(chunks['agent-ui-index'].modules.some((path) => path.endsWith('src/pages.js')));
+    assert.ok(!chunks.index.modules.some((path) => path.includes('/src/')));
+    assert.deepEqual(pages.index.chunksLoadedAtStartup, ['agent-ui', 'agent-ui-index', 'index']);
     assert.deepEqual(pages.index.lazyChunks, ['devtools']);
     assert.ok(chunks.devtools && !chunks.devtools.loadsEagerly);
     assert.ok(chunks.index.stylesheet);

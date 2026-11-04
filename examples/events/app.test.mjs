@@ -538,10 +538,10 @@ test('/event/*path is the wildcard: deeper URLs get a 404 page and never take /e
   assert.deepEqual(browser.ui.state().route.params, { path: '3/x' });
 });
 
-test('a static site is refused: the event pages have parameters, so they have no single file', async () => {
+test('a static site is refused: the event pages have parameters and list no paths, so they have no file', async () => {
   const config = await loadConfig({ root: repositoryRoot });
   await assert.rejects(
     prerender({ projectRoot: repositoryRoot, outDir, pages: config.pages }),
-    /page "\/event\/:id".*has parameters, so a static site has no single file for it/,
+    /page "\/event\/:id".*has parameters and lists no `paths`, so a static site has no file for it/,
   );
 });

@@ -31,10 +31,10 @@ test('renderDocument adds markup, state, title and description, and running it a
 
 // A page module as the build generates it (build/pages.mjs), for tests that need a page on disk.
 const pagesModule = new URL('../src/pages.js', import.meta.url).href;
-const writePage = (root, file, { path = '/', title = 'Fine', extra = '' } = {}) =>
+const writePage = (root, file, { path = '/', title = 'Fine', extra = '', after = '' } = {}) =>
   writeFileSync(
     join(root, file),
-    `import { definePage } from '${pagesModule}';\nconst definition = definePage({ head: { title: ${JSON.stringify(title)} }${extra} }, { path: ${JSON.stringify(path)}, view: { tag: 'p', id: 'x', children: 'x' } });\nexport const { create, describePage, namespaces, spec } = definition;\n`,
+    `import { definePage } from '${pagesModule}';\nconst definition = definePage({ head: { title: ${JSON.stringify(title)} }${extra} }, { path: ${JSON.stringify(path)}, view: { tag: 'p', id: 'x', children: 'x' } });\nexport const { create, describePage, namespaces, spec } = definition;\n${after}`,
   );
 const record = (name, app, path = '/') => ({ name, path, app, file: `pages/${name}/page.js` });
 
@@ -47,7 +47,8 @@ test('check renders every page in development mode and reports what is wrong', a
     writePage(root, 'bad-status.mjs', { extra: ", status: () => 'ok'" });
     writeFileSync(join(root, 'broken.mjs'), 'export const spec = {};\nexport const create = () => { throw new Error("spec problem at $.children.0"); };\nexport const describePage = () => ({ title: "x" });\n');
     const run = (app) => checkProject({ root, config: { outDir: 'dist', pages: [record('p', app)] } });
-    assert.deepEqual(await run('good.mjs'), { problems: [], pagesChecked: 1, notes: [] });
+    const good = await run('good.mjs');
+    assert.deepEqual({ ...good, measurements: good.measurements.map(({ url, elements, listRows }) => ({ url, elements, listRows })) }, { problems: [], pagesChecked: 1, notes: [], measurements: [{ url: '/', elements: 1, listRows: 0 }] });
     const withHook = await checkProject({
       root,
       config: { outDir: 'dist', pages: [record('p', 'good.mjs')], stateForBrowser: () => ({ nope: {} }) },
@@ -101,7 +102,7 @@ test('check validates the spec of a page it does not render (a page with paramet
     assert.equal(pagesChecked, 0);
     assert.equal(problems.length, 1, JSON.stringify(problems));
     assert.match(problems[0], /^pages\/item-id\/page\.js: .*aria-label/);
-    assert.deepEqual(notes, ['/item/:id has parameters, so check does not render it (its spec is validated)']);
+    assert.deepEqual(notes, ['/item/:id has parameters and its view.js lists no `paths`, so check does not render it (its spec is validated). Export paths = ["/item/1"] to render it']);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -135,9 +136,50 @@ test('a static site names every page: prerender refuses a page with parameters b
     writePage(root, 'docs.mjs', { path: '/docs/*path' });
     await assert.rejects(
       prerender({ projectRoot: root, outDir: 'out', pages: [record('index', 'home.mjs'), record('item-id', 'item.mjs', '/item/:id'), record('docs-path', 'docs.mjs', '/docs/*path')] }),
-      /^Error: page "\/item\/:id", page "\/docs\/\*path": has parameters, so a static site has no single file for it\. A static site names every page\. Build without --static and serve the site with `agent-ui serve`/,
+      /^Error: page "\/item\/:id", page "\/docs\/\*path": has parameters and lists no `paths`, so a static site has no file for it\. Export the URLs to write from its view\.js: export const paths = \["\/product\/1", "\/product\/2"\]/,
     );
     assert.equal(existsSync(join(root, 'out', 'index.html')), false, 'nothing was written');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a page with parameters is checked and written at each URL its view.js lists in `paths`; a wrong list is refused with the fix', async () => {
+  const { prerender } = await import('../build/prerender.mjs');
+  const { checkProject } = await import('../cli/check.mjs');
+  const root = mkdtempSync(join(tmpdir(), 'agent-ui-paths-'));
+  try {
+    mkdirSync(join(root, 'out'));
+    writeFileSync(join(root, 'out', 'item-id.html'), PAGE);
+    const itemPage = (paths) => writePage(root, 'item.mjs', { path: '/item/:id', title: 'Item', after: `export const paths = ${paths};\n` });
+    itemPage("async () => ['/item/1', '/item/2']");
+    const pages = [record('item-id', 'item.mjs', '/item/:id')];
+    const checked = await checkProject({ root, config: { outDir: 'out', pages } });
+    assert.deepEqual({ ...checked, measurements: checked.measurements.map(({ url }) => url) }, { problems: [], pagesChecked: 2, notes: [], measurements: ['/item/1', '/item/2'] }, 'check renders each listed URL');
+    assert.deepEqual(await prerender({ projectRoot: root, outDir: 'out', pages, cacheBust: 1 }), ['/item/1', '/item/2']);
+    assert.match(readFileSync(join(root, 'out', 'item/2/index.html'), 'utf8'), /<title>Item<\/title>/);
+    const refused = async (paths, message) => {
+      itemPage(paths);
+      await assert.rejects(prerender({ projectRoot: root, outDir: 'out', pages, cacheBust: paths }), message);
+    };
+    await refused("['/other/1']", /pages\/item-id\/page\.js: paths\[0\] "\/other\/1" is not a URL of \/item\/:id\. List only URLs this page answers, for example "\/item\/1"/);
+    await refused("['/item/1', '/item/1']", /paths\[1\] "\/item\/1" is listed twice/);
+    await refused("['/item/a b']", /paths\[0\] "\/item\/a b" is not a plain path/);
+    await refused('[]', /"paths" gave an empty list, not a list of URLs/);
+    await refused("'/item/1'", /"paths" is string, not a list of URLs or a function that returns one/);
+    // A URL that another, more specific page answers: two pages would write one file. Refused before anything is written.
+    writePage(root, 'slug.mjs', { path: '/:slug', after: "export const paths = ['/about', '/terms'];\n" });
+    writePage(root, 'about-page.mjs', { path: '/about' });
+    writeFileSync(join(root, 'out', 'slug.html'), PAGE);
+    writeFileSync(join(root, 'out', 'about.html'), PAGE);
+    const overlapping = [record('slug', 'slug.mjs', '/:slug'), record('about', 'about-page.mjs', '/about')];
+    await assert.rejects(prerender({ projectRoot: root, outDir: 'out', pages: overlapping, cacheBust: 'overlap' }), /^Error: pages\/slug\/page\.js: paths lists "\/about", which the server answers with the page "\/about" \(pages\/about\/page\.js\), not with "\/:slug"\. Remove it from paths/);
+    assert.equal(existsSync(join(root, 'out', 'terms', 'index.html')), false, 'nothing was written');
+    const overlapChecked = await checkProject({ root, config: { outDir: 'out', pages: overlapping } });
+    assert.ok(overlapChecked.problems.some((problem) => /paths lists "\/about", which the server answers with the page "\/about"/.test(problem)), JSON.stringify(overlapChecked.problems));
+    writePage(root, 'about.mjs', { path: '/about', after: "export const paths = ['/about'];\n" });
+    const about = await checkProject({ root, config: { outDir: 'out', pages: [record('about', 'about.mjs', '/about')] } });
+    assert.match(about.problems[0], /exports "paths", but the URL of this page \(\/about\) has no parameters\. A page without parameters has one URL, its own: remove `paths`/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

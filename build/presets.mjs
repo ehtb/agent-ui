@@ -30,10 +30,10 @@ export const frameworkBuildOptions = ({ dev = false, validator = dev ? 'include'
     // that runs would be new and empty). The validator stays a chunk of its own, as it does in a production build that includes it.
     manualChunks:
       validator === 'omit'
-        ? { 'agent-ui': [at('src/ui.js'), at('src/spec-core.js'), at('src/validate.js'), at('src/messages.js'), at('src/namespaces.js'), at('src/runtime-checks.js'), at('src/errors.js'), at('src/error-messages.js'), ...(dev ? [at('src/**')] : [])] }
+        ? { 'agent-ui': [at('src/ui.js'), at('src/base-path.js'), at('src/spec-core.js'), at('src/validate.js'), at('src/messages.js'), at('src/namespaces.js'), at('src/runtime-checks.js'), at('src/errors.js'), at('src/error-messages.js'), ...(dev ? [at('src/**')] : [])] }
         : dev
-          ? { validator: [at('src/validate.js'), at('src/grammar.js'), at('src/handler-checks.js'), at('src/spec-core.js'), at('src/messages.js'), at('src/namespaces.js'), at('src/runtime-checks.js'), at('src/errors.js'), at('src/error-messages.js')], 'agent-ui': [at('src/**')] }
-          : { 'agent-ui': [at('src/ui.js')], validator: [at('src/validate.js'), at('src/grammar.js'), at('src/handler-checks.js'), at('src/spec-core.js'), at('src/messages.js'), at('src/namespaces.js'), at('src/runtime-checks.js'), at('src/errors.js'), at('src/error-messages.js')] },
+          ? { validator: [at('src/validate.js'), at('src/grammar.js'), at('src/handler-checks.js'), at('src/spec-core.js'), at('src/messages.js'), at('src/namespaces.js'), at('src/runtime-checks.js'), at('src/base-path-checks.js'), at('src/errors.js'), at('src/error-messages.js')], 'agent-ui': [at('src/**')] }
+          : { 'agent-ui': [at('src/ui.js'), at('src/base-path.js')], validator: [at('src/validate.js'), at('src/grammar.js'), at('src/handler-checks.js'), at('src/spec-core.js'), at('src/messages.js'), at('src/namespaces.js'), at('src/runtime-checks.js'), at('src/base-path-checks.js'), at('src/errors.js'), at('src/error-messages.js')] },
     // A browser never lists static URLs or reads a page's HTTP status, so the server-only part of pages is always left out;
     // the development checks (validator, builders, pages) only when the validator is omitted.
     replaceModules: {

@@ -25,7 +25,7 @@ export const exposeHot = ({ entries, getCurrent }) => {
       const state = running.ui.state();
       running.ui.destroy();
       running.entry = entry;
-      const environment = { ...browserEnvironment({ dev: running.dev }), root: running.slot, shell: running.shellApp };
+      const environment = { ...browserEnvironment({ dev: running.dev, basePath: running.basePath }), root: running.slot, shell: running.shellApp };
       try {
         running.ui = entry.mount({ ...environment, initialState: state });
       } catch (error) {

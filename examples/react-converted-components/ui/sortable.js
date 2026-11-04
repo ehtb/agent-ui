@@ -21,11 +21,12 @@
 //                                        set dataTransfer. What is missing versus a native drag: no ghost image,
 //                                        and a release outside the page's mount root is not seen (Escape finishes
 //                                        it), because pointer events are only delegated from the mount root.
-//   DragOverlay (dnd-kit)             -> the `follow` prop on the row: while the row is picked up the runtime tracks
+//   DragOverlay (dnd-kit)             -> the `follow` prop on the row: while the row is picked up the plugin withFollow tracks
 //                                        the pointer and sets --follow-x / --follow-y; the CSS on [data-dragging]
 //                                        turns them into a transform. The coordinates never enter the state or the log.
-//   FLIP/layout animation (dnd-kit)   -> `transition: 200` on the row: the runtime slides every row that changes
+//   FLIP/layout animation (dnd-kit)   -> `transition: 200` on the row: the plugin withMoves slides every row that changes
 //                                        position (docs/API.md, "Moves"), which is what makes the live reorder move
+// A page that shows a sortable lists both plugins: plugins: [withFollow, withMoves] (from @ehtb/agent-ui/follow and /moves).
 import { defineElement, param, slot } from '@ehtb/agent-ui/components';
 import { ul, li, span, button, state, act, join, equals } from '@ehtb/agent-ui/spec';
 
@@ -59,7 +60,7 @@ export const SortableItem = defineElement('sortableItem', {
       class: 'ui-sortable-item',
       transition: 200,
       'data-dragging': equals(state(join(param('name'), '.draggingId')), param('rowId')),
-      // While picked up the row follows the pointer: the runtime writes --follow-x / --follow-y, the CSS moves the row.
+      // While picked up the row follows the pointer: the plugin withFollow writes --follow-x / --follow-y, the CSS moves the row.
       follow: equals(state(join(param('name'), '.draggingId')), param('rowId')),
       // Moving the pointer over a row while dragging moves the picked-up row there; nothing happens when not dragging.
       on: { pointerover: act(join(param('name'), '.over'), { id: param('rowId') }) },

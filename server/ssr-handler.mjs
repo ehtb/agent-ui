@@ -33,13 +33,17 @@
 //                                                The outcome page sees its own path, search and query; method, headers and cookies stay the POST's.
 // Headers are checked in one place (src/http-headers.js): names are lower case, `set-cookie` is the only header that repeats,
 // and a header the framework writes (content-type, content-length, content-encoding, x-content-type-options, ...) is refused.
-// Bodies are JSON (`application/json`) or application/x-www-form-urlencoded (limit `maxBodyBytes`, default 100 KB); any
-// other content type is answered 415, not parsed as a form. A body that a host framework's parser already put on
+// Bodies are JSON (`application/json`) or application/x-www-form-urlencoded (limit `maxBodyBytes`, default 100 KB, answered
+// 413 above it); any other content type, and a compressed body (`content-encoding`), is answered 415, not parsed. A body that a host framework's parser already put on
 // `request.body` is used as it is, because the host owns how it was read.
 //
 // A page that declares `ready` is given `timeoutMs` (default 2000) to become ready. With the default `onTimeout: 'error'`
 // a page that never becomes ready answers 503, so a half-loaded page is never mistaken for a finished one; pass
 // `onTimeout: 'serve'` to serve the partial page with 200 instead (it is logged either way).
+//
+// A site served below a path (`basePath` of the config, src/base-path.js) is answered only below it: a request outside it goes to
+// `next()`. The request object, the page, the API and `fetchFunction` see the site's own path without the base; a form's
+// redirect gets it back on the wire.
 //
 // Options: `config`, `root`, `outDir`, `maxBodyBytes`, `timeoutMs`, `onTimeout`, `log`, `onError`, `hosts`,
 // `initialStateFor`, `stateForBrowser` and `transformResponse`.
@@ -55,6 +59,8 @@ import { checkResponseHeaders, mergeResponseHeaders } from '../src/http-headers.
 import { describeValue, isPlainObject } from '../src/spec-core.js';
 import { mergeInitialState } from '../src/namespaces.js';
 import { compileUrlPattern } from '../src/url-pattern.js';
+import { withBase, withoutBase } from '../src/base-path.js';
+import { BASE_PATH_ADVICE, isBasePath } from '../src/base-path-checks.js';
 
 const projectRoot = process.cwd();
 const SERVER_ERROR = 'internal server error';
@@ -69,9 +75,9 @@ const preview = (value) => {
 };
 
 // Reads a body up to `maximumBytes`. Once that limit is passed the chunks already collected are dropped, the listeners are
-// removed and the rest of the body is drained (resume) rather than kept in memory: the answer is a 400, and a sender that
+// removed and the rest of the body is drained (resume) rather than kept in memory: the answer is a 413, and a sender that
 // streams megabytes into a refused request must not make the server hold them. The socket is drained, not destroyed, so the
-// 400 still reaches the client on it; nothing is kept while that happens. A connection that closes before `end` rejects
+// 413 still reaches the client on it; nothing is kept while that happens. A connection that closes before `end` rejects
 // too, so the handler can never wait forever for a promise nobody will settle.
 const readBody = (request, maximumBytes) =>
   new Promise((resolveBody, reject) => {
@@ -81,7 +87,7 @@ const readBody = (request, maximumBytes) =>
     const listeners = {
       data: (chunk) => {
         size += chunk.length;
-        if (size > maximumBytes) failRead(new Error(`request body too large (more than ${maximumBytes} bytes). Raise maxBodyBytes of createSsrHandler if requests this large are expected`));
+        if (size > maximumBytes) failRead(bodyTooLarge(maximumBytes));
         else chunks.push(chunk);
       },
       end: () => {
@@ -104,7 +110,7 @@ const readBody = (request, maximumBytes) =>
       settled = true;
       chunks = [];
       removeListeners();
-      request.resume?.(); // drain what is still coming; the response is already a 400
+      request.resume?.(); // drain what is still coming; the response is already a 413 or a 400
       reject(error);
     };
     request.on('data', listeners.data);
@@ -113,8 +119,20 @@ const readBody = (request, maximumBytes) =>
     request.on('close', listeners.close);
   });
 
-// `415` is a request this handler will not read; `400` is a body it tried to read and could not.
+// `415` is a request this handler will not read; `413` a body over `maxBodyBytes`; `400` a body it tried to read and could not.
 const bodyError = (status, message) => Object.assign(new Error(message), { bodyStatus: status });
+const bodyTooLarge = (maximumBytes) => bodyError(413, `request body too large (more than ${maximumBytes} bytes). Raise maxBodyBytes of createSsrHandler if requests this large are expected`);
+
+// The handler reads a body as it was sent. A compressed body is the host's to decode (its body parser does that); the
+// handler refuses it rather than parse gzip bytes as JSON. A declared length over the limit is refused before reading.
+const checkBodyHeaders = (headers, maximumBytes) => {
+  const encoding = String(headers['content-encoding'] ?? 'identity').trim().toLowerCase();
+  if (encoding !== 'identity' && encoding !== '') {
+    throw bodyError(415, `content-encoding "${encoding}" is not decoded by createSsrHandler. Decode the body in the host server (its body parser) and pass the parsed value as \`request.body\`, or send it uncompressed`);
+  }
+  const declaredLength = Number(headers['content-length']);
+  if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) throw bodyTooLarge(maximumBytes);
+};
 
 const JSON_TYPE = /^application\/(?:[\w.+-]+\+)?json(?:\s*;.*)?$/i;
 const FORM_TYPE = /^application\/x-www-form-urlencoded(?:\s*;.*)?$/i;
@@ -178,6 +196,8 @@ export const createSsrHandler = async (options = {}) => {
   const api = config.api ? (await import(pathToFileURL(resolve(root, config.api)))).createApi({ root }) : null;
   const apiPrefix = `${api?.apiBase ?? '/api'}/`;
   const fetchFunction = config.fetchFunction;
+  const basePath = config.basePath ?? '';
+  if (!isBasePath(basePath)) fail('createSsrHandler', `config.basePath ${preview(basePath)} is not allowed`, BASE_PATH_ADVICE);
 
   // A trailing slash is the same page: "/product/3/" is "/product/:id".
   const findPage = (pathname) => {
@@ -192,7 +212,7 @@ export const createSsrHandler = async (options = {}) => {
     if (sessionState !== null && sessionState !== undefined && !isPlainObject(sessionState)) {
       fail('createSsrHandler initialStateFor', `returned ${preview(sessionState)}, not a state object { namespace: { key: value } }`, 'Return an object in the shape of ui.state() (an empty one when there is no session)');
     }
-    const result = await renderPage(create, { url, fetchFunction, initialState: mergeInitialState(sessionState, initialState), createShell, dev: false, request: context, timeoutMs, stateForBrowser });
+    const result = await renderPage(create, { url, fetchFunction, initialState: mergeInitialState(sessionState, initialState), createShell, dev: false, request: context, timeoutMs, stateForBrowser, basePath });
     try {
       // A half-loaded page is not a finished page. By default the answer is a 503; `onTimeout: 'serve'` keeps the old
       // behavior for a host that prefers the partial page, and either way the timeout is logged so it is not silent.
@@ -259,7 +279,11 @@ export const createSsrHandler = async (options = {}) => {
     const hasBody = context.method !== 'GET' && context.method !== 'HEAD';
     let body = {};
     try {
-      if (hasBody) body = request.body !== undefined ? request.body : parseBody(context.headers, await readBody(request, maxBodyBytes));
+      if (hasBody && request.body !== undefined) body = request.body;
+      else if (hasBody) {
+        checkBodyHeaders(context.headers, maxBodyBytes);
+        body = parseBody(context.headers, await readBody(request, maxBodyBytes));
+      }
     } catch (error) {
       const status = error.bodyStatus ?? 400;
       await send(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }, JSON.stringify({ message: error.message }));
@@ -298,7 +322,7 @@ export const createSsrHandler = async (options = {}) => {
       checkFormOutcome(outcome);
       const outcomeHeaders = checkResponseHeaders(outcome.headers, 'api.handleForm', { reserved: ['location', 'cache-control'] });
       if (outcome.redirect !== undefined) {
-        await send(303, mergeResponseHeaders({ location: outcome.redirect, 'cache-control': 'no-store' }, outcomeHeaders), '');
+        await send(303, mergeResponseHeaders({ location: withBase(basePath, outcome.redirect), 'cache-control': 'no-store' }, outcomeHeaders), '');
         return true;
       }
       const outcomeContext = requestContextForUrl(context, outcome.url);
@@ -369,7 +393,12 @@ export const createSsrHandler = async (options = {}) => {
       if (!isAllowedHost(request, hosts)) return void response.writeHead(421, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...SECURITY_HEADERS }).end('misdirected request: this server answers to its own host names only');
       const location = readLocation(request.url);
       if (location === null) return void response.writeHead(400, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...SECURITY_HEADERS }).end('bad request: malformed percent-encoding in the URL');
-      context = createRequestContext(request, location, { signal: controller.signal });
+      const sitePath = withoutBase(basePath, location.pathname);
+      if (sitePath === null) {
+        if (next) return next(); // outside the base: the host's
+        return void response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...SECURITY_HEADERS }).end('not found');
+      }
+      context = createRequestContext(request, { ...location, pathname: sitePath }, { signal: controller.signal });
       // The hook runs only when the handler writes an answer: a request that goes to next() does not pay for it, and a
       // throwing hook cannot turn a host's static file into a 500.
       send = async (status, headers = {}, body = '', { defaultCacheControl = null, requestContext = context } = {}) => {

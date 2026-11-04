@@ -50,7 +50,7 @@ test('a production build refuses a finished spec that is not valid, with the val
 
 test('a misspelt export of view.js is refused with the nearest valid name', async () => {
   await withProject({ 'page.js': page, 'view.js': `${view}\nexport const layuot = (content) => content;` }, async (project) => {
-    await assert.rejects(build(project), /pages\/view\.js: unknown export "layuot"\. Did you mean "layout"\? Export only view, layout, pending, shell from view\.js/);
+    await assert.rejects(build(project), /pages\/view\.js: unknown export "layuot"\. Did you mean "layout"\? Export only view, layout, pending, shell, paths from view\.js/);
   });
 });
 

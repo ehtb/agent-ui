@@ -1,7 +1,17 @@
 {
   "name": "@ehtb/agent-ui",
-  "version": "0.1.0",
-  "description": "A frontend framework for agents to write, check and maintain: the UI is a JSON spec, state is plain data, behavior goes through named, typed actions. No dependencies.",
+  "version": "0.2.0",
+  "description": "A UI library with server rendering, for agents to write, check and maintain: the UI is a JSON spec, state is plain data, behavior goes through named, typed actions. No dependencies.",
+  "license": "MIT",
+  "author": "ehtb",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ehtb/agent-ui.git"
+  },
+  "homepage": "https://github.com/ehtb/agent-ui#readme",
+  "bugs": {
+    "url": "https://github.com/ehtb/agent-ui/issues"
+  },
   "type": "module",
   "sideEffects": [
     "**/*.css"
@@ -44,6 +54,14 @@
     "./mount-element": {
       "types": "./src/mount-element.d.ts",
       "default": "./src/mount-element.js"
+    },
+    "./follow": {
+      "types": "./src/follow.d.ts",
+      "default": "./src/follow.js"
+    },
+    "./moves": {
+      "types": "./src/moves.d.ts",
+      "default": "./src/moves.js"
     },
     "./error-messages": {
       "types": "./src/error-messages.d.ts",
@@ -89,17 +107,37 @@
       "types": "./build/index.d.mts",
       "default": "./build/index.mjs"
     },
-    "./build/*.mjs": {
-      "types": "./build/*.d.mts",
-      "default": "./build/*.mjs"
+    "./build/index.mjs": {
+      "types": "./build/index.d.mts",
+      "default": "./build/index.mjs"
+    },
+    "./build/build.mjs": {
+      "types": "./build/build.d.mts",
+      "default": "./build/build.mjs"
+    },
+    "./build/config.mjs": {
+      "types": "./build/config.d.mts",
+      "default": "./build/config.mjs"
+    },
+    "./build/presets.mjs": {
+      "types": "./build/presets.d.mts",
+      "default": "./build/presets.mjs"
+    },
+    "./build/prerender.mjs": {
+      "types": "./build/prerender.d.mts",
+      "default": "./build/prerender.mjs"
     },
     "./server/*.mjs": {
       "types": "./server/*.d.mts",
       "default": "./server/*.mjs"
     },
-    "./cli/*.mjs": {
-      "types": "./cli/*.d.mts",
-      "default": "./cli/*.mjs"
+    "./cli/ssr-server.mjs": {
+      "types": "./cli/ssr-server.d.mts",
+      "default": "./cli/ssr-server.mjs"
+    },
+    "./cli/static-handler.mjs": {
+      "types": "./cli/static-handler.d.mts",
+      "default": "./cli/static-handler.mjs"
     },
     "./testing/*.mjs": {
       "types": "./test/support/*.d.mts",
@@ -132,7 +170,13 @@
     "docs",
     "skills",
     "test/support",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "SUPPORT.md"
   ],
   "engines": {
     "node": ">=22"
@@ -140,10 +184,15 @@
   "keywords": [
     "frontend",
     "framework",
-    "agents",
-    "llm",
+    "ui",
+    "server-side-rendering",
     "ssr",
     "hydration",
+    "declarative",
+    "json",
+    "agents",
+    "llm",
+    "coding-agents",
     "no-dependencies"
   ],
   "scripts": {
@@ -152,6 +201,11 @@
     "schema": "node cli/schema.mjs docs/spec.schema.json",
     "typecheck": "tsc -p test/types",
     "test:examples": "node --test test/examples/*.test.mjs && node test/run-examples.mjs",
-    "example": "node test/run-examples.mjs run"
+    "example": "node test/run-examples.mjs run",
+    "prepublishOnly": "npm run test:framework",
+    "release": "npm publish --access public --provenance"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -7,8 +7,8 @@
 //
 // Every check throws one Error: where, what is wrong, how to fix it, with "Did you mean" for near misses.
 import { didYouMean, fail } from './messages.js';
-import { BINDING_KEYS, DELEGATED_EVENTS, KEY_EVENTS, isBinding, isPlainObject } from './spec-core.js';
-import { ACTION_NAME, ATTRIBUTES, ATTRIBUTE_PREFIXES, isPrefixedAttribute, isReservedAttribute, HANDLER_OPTIONS, OPERAND_COUNTS, ROW_PATH, ROW_STATE_PATH, STATE_PATH, VOID_TAGS } from './grammar.js';
+import { BINDING_KEYS, DELEGATED_EVENTS, KEY_EVENTS, SVG_TAGS, isBinding, isPlainObject } from './spec-core.js';
+import { ACTION_NAME, ATTRIBUTES, ATTRIBUTE_PREFIXES, isPrefixedAttribute, isReservedAttribute, HANDLER_OPTIONS, OPERAND_COUNTS, ROW_PATH, ROW_STATE_PATH, STATE_PATH, SVG_ATTRIBUTES, VOID_TAGS } from './grammar.js';
 import { IDENTIFIER } from './namespaces.js';
 import { checkKeyChord } from './handler-checks.js';
 
@@ -124,6 +124,7 @@ export const checkElement = (tag, attributes, children) => {
         const prefixed = ATTRIBUTE_PREFIXES.some((prefix) => name.startsWith(prefix));
         fail(where, `unknown attribute "${name}"`, prefixed ? 'A data-* or aria-* name needs something after the prefix and no space, quote, <, >, / or =. Write for example data-row-id' : `${didYouMean(name, ATTRIBUTES)}Attributes are the ones of HTML (src/grammar.js, ATTRIBUTES), data-* and aria-*; the HTML id attribute is domId`);
       }
+      if (SVG_ATTRIBUTES.includes(name) && !SVG_TAGS.includes(tag)) fail(where, `${name} is an attribute of an svg drawing, and this is a ${tag}`, `Put it on the svg or one of its shapes, or style the ${tag} with CSS`);
       checkValue(where, `attribute ${name}`, value);
     }
   }

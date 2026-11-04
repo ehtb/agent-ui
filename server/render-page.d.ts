@@ -13,6 +13,8 @@ export interface CreateEnvironment {
   shell?: AppApi | null;
   /** True when the app started from state a server wrote: false while rendering on the server. */
   serverRendered?: boolean;
+  /** The path the site is served below ('' for the root). */
+  basePath?: string;
 }
 export function renderPage(
   create: (environment: CreateEnvironment) => AppApi,
@@ -28,8 +30,10 @@ export function renderPage(
     stateForBrowser?: ((state: Record<string, any>, request: RequestContext | null) => Record<string, any> | Promise<Record<string, any>>) | null;
     /** Stops the render when the client goes away; defaults to `request.signal`. The rejected error has `name: 'AbortError'`. */
     signal?: AbortSignal | null;
+    /** The path the site is served below, for example '/shop': `url` is the site's own path; the page's root-absolute URLs carry the base. Default ''. */
+    basePath?: string;
   },
-): Promise<{ html: string; state: Record<string, unknown>; stateScript: string; ui: AppApi; shell: boolean; shellApp: AppApi | null; timedOut: boolean }>;
+): Promise<{ html: string; state: Record<string, unknown>; stateScript: string; ui: AppApi; shell: boolean; shellApp: AppApi | null; timedOut: boolean; basePath: string }>;
 /** Used when no fetchFunction is given: absolute http(s) URLs go to the real fetch, a relative URL fails with the fix. */
 export const defaultFetchFunction: CreateEnvironment['fetchFunction'];
 export function createServerWindow(url?: string): any;

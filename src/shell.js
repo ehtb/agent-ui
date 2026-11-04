@@ -22,6 +22,7 @@ import { isUnsafeUrl } from './spec-core.js';
 import { APP_ELEMENT_ID, SHELL_ELEMENT_ID } from './hydrate.js';
 import { syncApps } from './sync-apps.js';
 import { RESERVED_NAMESPACE } from './namespaces.js';
+import { withBase, withoutBase } from './base-path.js';
 import { checkShell } from './shell-checks.js';
 
 const route = {
@@ -48,10 +49,11 @@ export const defineShell = (definition) => {
     createApp: (environment, view) =>
       app({
         namespaces: { [RESERVED_NAMESPACE]: route, ...namespaces },
-        initialState: { [RESERVED_NAMESPACE]: { path: environment.win?.location?.pathname ?? '/' } },
+        initialState: { [RESERVED_NAMESPACE]: { path: withoutBase(environment.basePath ?? '', environment.win?.location?.pathname ?? '/') ?? '/' } },
         spec: view,
         root: environment.root,
         dev: environment.dev,
+        basePath: environment.basePath ?? '',
         debug: environment.debug ?? debug,
         plugins: plugins.map((plugin) => plugin({ ...environment, shellName: name })),
       }),
@@ -103,7 +105,7 @@ export const defineShell = (definition) => {
     // Starts what the shell reads from a page's app and follows where route.go leads (the shell's `navigate`, from src/navigation.js, or
     // a normal page load without one); returns the function that stops all of it (the page's app calls it when it is destroyed). When
     // one read cannot be made, the ones already started are stopped before the error goes on.
-    connect: (pageApp, shellApp, win) => {
+    connect: (pageApp, shellApp, win, basePath = '') => {
       const stops = [];
       const stopAll = () => stops.forEach((stop) => stop());
       try {
@@ -120,7 +122,7 @@ export const defineShell = (definition) => {
             if (!destination || pageApp.replaying) return;
             if (isUnsafeUrl('href', destination.href)) return console.error(`route.go: ${destination.href} is an unsafe URL and is not loaded. Use an http(s) or relative URL`);
             if (shellApp.navigate) shellApp.navigate(destination.href);
-            else win.location.assign(destination.href);
+            else win.location.assign(withBase(basePath, destination.href));
           }),
         );
       } catch (error) {

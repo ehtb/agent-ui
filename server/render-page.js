@@ -19,6 +19,8 @@ import { fail } from '../src/messages.js';
 import { describeValue, isPlainObject } from '../src/spec-core.js';
 import { APP_ELEMENT_ID, SHELL_ELEMENT_ID } from '../src/hydrate.js';
 import { stateScriptHtml } from '../src/document-markup.js';
+import { withBase } from '../src/base-path.js';
+import { BASE_PATH_ADVICE, isBasePath } from '../src/base-path-checks.js';
 
 // A window with just what the plugins read: location, event registration and removal, timers. A plugin that needs more (storage,
 // a real document, a library that draws) returns early when the environment says `isServerRendering` (docs/API.md, section 6).
@@ -55,6 +57,8 @@ export const defaultFetchFunction = async (url, init) =>
 //   initialState state keys to start from (for example the result of a posted form); the app spreads it over its defaults
 //   request      the request context (server/request.mjs) passed to `fetchFunction` as its third argument
 //   timeoutMs    give up waiting for `ready` after this long and render what exists (default 2000)
+//   basePath     the path the site is served below (src/base-path.js): `url` is the site's own path, the window's address and the
+//                page's root-absolute URLs carry the base, and `fetchFunction` receives the site's own URLs
 // The server window holds only what `createServerWindow` lists, so a plugin that reaches for anything else fails with a bare
 // "x is not a function". Such a TypeError or ReferenceError keeps its message and gets the fix added; other errors pass unchanged.
 export const explainServerFailure = (error) =>
@@ -175,8 +179,9 @@ const publicStateFor = async (state, stateForBrowser, request) => {
   return projected;
 };
 
-export const renderPage = async (create, { url = '/', fetchFunction = null, timeoutMs = 2000, dev, initialState = {}, createShell = null, request = null, stateForBrowser = null, signal = null } = {}) => {
+export const renderPage = async (create, { url = '/', fetchFunction = null, timeoutMs = 2000, dev, initialState = {}, createShell = null, request = null, stateForBrowser = null, signal = null, basePath = '' } = {}) => {
   if (typeof dev !== 'boolean') fail('renderPage', `dev is ${JSON.stringify(dev) ?? 'missing'}`, 'Pass dev: true to render with the development checks (agent-ui check) and dev: false to serve');
+  if (!isBasePath(basePath)) fail('renderPage', `basePath ${JSON.stringify(basePath)} is not allowed`, BASE_PATH_ADVICE);
   // A request context carries the signal of its connection, so a host that passes `request` does not pass the same signal twice.
   const abortSignal = signal ?? request?.signal ?? null;
   if (abortSignal?.aborted) throw renderAbortedError();
@@ -186,7 +191,7 @@ export const renderPage = async (create, { url = '/', fetchFunction = null, time
   // debug: false whatever the page says: the debug console is for a browser's console, and a server has none to write to.
   const resourceFetch = fetchFunction ?? defaultFetchFunction;
   const requestFetch = request === null || request === undefined ? resourceFetch : (resourceUrl, init) => resourceFetch(resourceUrl, init, request);
-  const environment = { win: createServerWindow(url), fetchFunction: fetchWithRequestSignal(requestFetch, abortSignal), dev, debug: false, isServerRendering: true, serverRendered: false };
+  const environment = { win: createServerWindow(withBase(basePath, url)), fetchFunction: fetchWithRequestSignal(requestFetch, abortSignal), dev, debug: false, isServerRendering: true, serverRendered: false, basePath };
   let shellApp = null;
   let ui = null;
   const onAbort = () => {
@@ -218,7 +223,7 @@ export const renderPage = async (create, { url = '/', fetchFunction = null, time
     const stateForDocument = await publicStateFor(state, stateForBrowser, request);
     // The hook may await the network: a visitor who left during it must not get a result from an app that is already destroyed.
     if (abortSignal?.aborted) throw renderAbortedError();
-    return { html: serialize(root), state, stateScript: stateScriptHtml(stateForDocument), ui, shell: Boolean(shellApp), shellApp, timedOut };
+    return { html: serialize(root), state, stateScript: stateScriptHtml(stateForDocument), ui, shell: Boolean(shellApp), shellApp, timedOut, basePath };
   } catch (error) {
     // Nothing is handed back, so nobody else can end the apps that were started.
     // The render's own failure is what the caller needs; a cleanup that also throws must not replace it.

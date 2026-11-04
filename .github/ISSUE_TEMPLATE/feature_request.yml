@@ -1,0 +1,37 @@
+name: Feature request
+description: A capability the framework does not have
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        agent-ui deliberately keeps a closed grammar and a small core. Read `docs/DESIGN.md` ("Additions, and what is deliberately not built") and check whether a plugin, a resource, a build option or a host-server hook already covers the need.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to build, and what blocks it today? Describe the app, not only the API.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed shape
+      description: The smallest API, option or plugin you think would solve it. Say whether it can be a plugin or a project-side change instead of a core feature.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you tried, and why they are not enough.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and the documentation.
+          required: true
+        - label: I read the "deliberately not built" section of docs/DESIGN.md.
+          required: true

@@ -25,11 +25,21 @@ test('each page is an entry at the URL of its folder, and the manifest says whic
   for (const page of Object.values(manifest.pages)) assert.equal(page.chunksLoadedAtStartup[0], 'agent-ui'); // the runtime first, cached for every page
 });
 
-test('every page loads the runtime, the shared chunk and only its own page chunk', async () => {
+test('every page loads the runtime, the framework\'s shared chunk, the shop\'s shared chunk and only its own page chunk', async () => {
   const { manifest } = await run('.output-test');
   const shared = Object.keys(manifest.chunks).filter((name) => name.startsWith('shared-'));
   assert.equal(shared.length, 1, `small shared pieces are folded into one chunk: ${shared}`);
-  for (const [name, page] of Object.entries(manifest.pages)) assert.deepEqual(page.chunksLoadedAtStartup, ['agent-ui', shared[0], name]);
+  for (const [name, page] of Object.entries(manifest.pages)) assert.deepEqual(page.chunksLoadedAtStartup, ['agent-ui', 'agent-ui-checkout-index-product-id', shared[0], name]);
+});
+
+test('the framework\'s code and the shop\'s are never one file, so a deploy of the shop leaves the framework\'s chunks cached', async () => {
+  const { manifest } = await run('.output-test');
+  const isFramework = (path) => path.includes('/src/');
+  for (const [name, chunk] of Object.entries(manifest.chunks)) {
+    const framework = chunk.modules.filter(isFramework);
+    assert.ok(framework.length === 0 || framework.length === chunk.modules.length, `chunk "${name}" mixes the framework's modules with the shop's: ${chunk.modules.join(', ')}`);
+  }
+  assert.ok(manifest.chunks['agent-ui-checkout-index-product-id'].modules.every(isFramework));
 });
 
 test('each page ships only its own finished spec, and the shared behavior is in the shared chunk once', async () => {
@@ -59,18 +69,21 @@ test('the code that builds a view reaches no browser chunk: a page downloads beh
   for (const name of Object.keys(manifest.pages)) assert.ok(shipped.includes(`.agent-ui/${name}/spec.js`), `the ${name} page should ship its finished spec as data`);
 });
 
-test('the shell is behavior and data: its code, the navigation plugin and its content are in the shared chunk once, and no page repeats the header', async () => {
+test('the shell is behavior and data: its code, the navigation plugin and its content are in the shared chunks once, and no page repeats the header', async () => {
   const { manifest, text } = await run('.output-test');
   const shared = Object.keys(manifest.chunks).find((name) => name.startsWith('shared-'));
-  for (const modulePath of ['shared/shell.js', 'src/shell.js', 'src/navigation.js', '.agent-ui/shells/main.js']) {
+  for (const modulePath of ['shared/shell.js', '.agent-ui/shells/main.js']) {
     assert.ok(manifest.chunks[shared].modules.some((path) => path.endsWith(modulePath)), `the shared chunk should contain "${modulePath}"`);
+  }
+  for (const modulePath of ['src/shell.js', 'src/navigation.js']) {
+    assert.ok(manifest.chunks['agent-ui-checkout-index-product-id'].modules.some((path) => path.endsWith(modulePath)), `the framework's shared chunk should contain "${modulePath}"`);
   }
   assert.ok(text(shared).includes('shop-header'), 'the header\'s content ships in the shared chunk');
   for (const page of Object.keys(manifest.pages)) assert.ok(!text(page).includes('shop-header'), `the ${page} chunk must not repeat the header: the shell's content is shared`);
   for (const modulePath of ['shared/shell-view.js', 'src/spec.js']) assert.ok(!Object.values(manifest.chunks).some((chunk) => chunk.modules.some((path) => path.endsWith(modulePath))), `${modulePath} builds the view and must not be in a browser chunk`);
 });
 
-test('the head code is in the shared chunk (the navigation plugin copies the head of the next page), and its server half is in no chunk', async () => {
+test('the head code is in a shared chunk (the navigation plugin copies the head of the next page), and its server half is in no chunk', async () => {
   const { manifest } = await run('.output-test');
   const loaded = (page) => manifest.pages[page].chunksLoadedAtStartup.flatMap((name) => manifest.chunks[name].modules);
   for (const page of ['index', 'product-id', 'checkout']) assert.ok(loaded(page).some((path) => path.endsWith('src/head.js')), `the ${page} page loads src/head.js through the shell`);

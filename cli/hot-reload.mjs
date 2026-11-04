@@ -52,7 +52,7 @@ const fingerprintStaticFiles = (directory, assetsDir) => {
 export const versionOutput = ({ directory, manifest, previous = null }) => {
   const chunks = manifest.chunks;
   const names = Object.keys(chunks);
-  const fileOf = (url) => join(directory, url.replace(/^\//, ''));
+  const fileOf = (url) => join(directory, url.slice((manifest.basePath ?? '').length).replace(/^\//, ''));
   const texts = Object.fromEntries(names.map((name) => [name, readFileSync(fileOf(chunks[name].javascript), 'utf8')]));
   const nameOfFile = Object.fromEntries(names.map((name) => [baseName(chunks[name].javascript), name]));
 

@@ -318,6 +318,24 @@ test('row-state: each row opens on its own, keeps its note, and is forgotten wit
   assert.deepEqual(ui.errors, []);
 });
 
+test('svg-icons: the stars follow the rating, the line follows the data, and every svg says what it shows or is hidden', async () => {
+  const { ui, byId, root } = await mountRecipe('svg-icons');
+  const pressed = () => byId('star').map((element) => element.getAttribute('aria-pressed'));
+  assert.deepEqual(pressed(), ['true', 'true', 'true', 'false', 'false']);
+  fireEvent(byId('star')[4], 'click');
+  await ui.settle();
+  assert.deepEqual(byId('star').map((element) => element.classNames.includes('on')), [true, true, true, true, true]);
+  assert.deepEqual(findElements(root, (element) => element.localName === 'use').map((element) => element.getAttribute('href')), Array(5).fill('/icons.svg#star'));
+  assert.equal(byId('sparkline-line')[0].getAttribute('points'), '0,13.333333333333334 10,8.88888888888889 20,15.555555555555555 30,2.2222222222222214 40,6.666666666666668 50,0 60,4.444444444444445');
+  ui.dispatch('visits.add', { count: 1 });
+  await ui.settle();
+  assert.match(byId('sparkline')[0].getAttribute('aria-label'), /^Visits this week, from 5 to 1 a day$/);
+  for (const drawing of findElements(root, (element) => element.localName === 'svg')) {
+    assert.ok(drawing.getAttribute('aria-hidden') === 'true' || drawing.getAttribute('aria-label'), 'an svg is decoration or says what it shows');
+  }
+  assert.deepEqual(ui.errors, []);
+});
+
 test('format-values: money and dates come out as the reader writes them, and a change formats one row', async () => {
   const { ui, texts } = await mountRecipe('format-values');
   assert.deepEqual(texts('invoice'), ['Ada: €1,234.56, due 12 Mar 2026', 'Bo: €99.00, due 1 Apr 2026']);

@@ -102,8 +102,9 @@ export const launchBrowser = async () => {
       if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? 'evaluate failed');
       return result.result.value;
     };
-    const until = async (expression, what) => {
-      for (let waited = 0; waited < 8000; waited += 50) {
+    // Waits until the expression is true in the page; `timeout` (default 8000 ms) is longer for a step that waits on a rebuild.
+    const until = async (expression, what, { timeout = 8000 } = {}) => {
+      for (let waited = 0; waited < timeout; waited += 50) {
         if (await evaluate(expression)) return;
         await sleep(50);
       }

@@ -428,7 +428,17 @@
             "figure",
             "figcaption",
             "progress",
-            "time"
+            "time",
+            "svg",
+            "g",
+            "path",
+            "circle",
+            "ellipse",
+            "rect",
+            "line",
+            "polyline",
+            "polygon",
+            "use"
           ]
         },
         "id": {

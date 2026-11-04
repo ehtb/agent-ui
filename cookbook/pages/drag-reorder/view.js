@@ -13,7 +13,7 @@ export const view = main(
       'tasks.items',
       'id',
       li(
-        // `transition` slides the other rows aside as the list reorders; `follow` keeps the picked-up row under the pointer.
+        // `transition` slides the other rows aside as the list reorders (plugin withMoves); `follow` keeps the picked-up row under the pointer.
         { id: 'task', transition: 150, follow: isDragged, classes: { dragging: isDragged }, on: { pointerover: act('tasks.over', { id: item('id') }) } },
         button(
           {

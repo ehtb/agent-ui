@@ -97,5 +97,5 @@ export const injectHead = (pageHtml, { title, description, html: htmlAttributes 
 // title and description.
 export const renderDocument = (template, result, { describePage = null } = {}) => {
   const withMarkup = injectMarkup(template, result);
-  return describePage ? injectHead(withMarkup, describePage(result.state)) : withMarkup;
+  return describePage ? injectHead(withMarkup, describePage(result.state, { basePath: result.basePath ?? '' })) : withMarkup;
 };

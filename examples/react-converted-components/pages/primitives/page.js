@@ -1,6 +1,8 @@
 // The page at "/primitives": behavior only. Each interactive primitive is a namespace from primitives.js, mounted
 // under the name its component is given (`name: 'combobox'`), so the component's bindings and the page's live
 // status lines address the same keys. The content is view.js next to this file.
+import { withFollow } from '@ehtb/agent-ui/follow';
+import { withMoves } from '@ehtb/agent-ui/moves';
 import { combobox, datePicker, popover, sortable } from '../../primitives.js';
 
 // The combobox options and the reorderable tasks are data, so they live in state (the namespace), not in the spec.
@@ -24,4 +26,5 @@ export const namespaces = {
   sortable: sortable({ items: TASKS }),
 };
 
-export const page = { head: { title: 'Interactive primitives' }, namespaces };
+// The sortable's rows follow the pointer and slide aside: the two plugins behind `follow` and `transition`.
+export const page = { head: { title: 'Interactive primitives' }, namespaces, plugins: [withFollow, withMoves] };

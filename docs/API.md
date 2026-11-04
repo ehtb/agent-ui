@@ -36,9 +36,9 @@ The package is imported by name. Every module has one specifier, types included.
 
 | Import | What it is |
 |---|---|
-| `@ehtb/agent-ui` | the runtime: `app`, `signal`, `effect`, `settle`, `validate`, `grammar`, `mergeInitialState` |
+| `@ehtb/agent-ui` | the runtime: `app`, `signal`, `effect`, `settle`, `validate`, `grammar`, `mergeInitialState`, `countEffectRuns` |
 | `@ehtb/agent-ui/head` | the plugin `withHead`, which keeps the browser's document current as the state changes, for a page whose `head` is a function of the state (section 13, "Head") |
-| `@ehtb/agent-ui/resources`, `/window-events` | plugins; a page downloads only the ones it imports |
+| `@ehtb/agent-ui/resources`, `/window-events`, `/follow`, `/moves` | plugins; a page downloads only the ones it imports. All the plugins, and when to list each: section 6, "The plugins the package ships" |
 | `@ehtb/agent-ui/spec` | the builders (section 3, "Builders"): `div(...)`, `state(...)`, `act(...)`, `each`, `when`, one function per tag and operator |
 | `@ehtb/agent-ui/mount-element` | `mountElement(api, id, mount)`: how a plugin that draws into an element (a chart, an editor, a map) claims it (section 6, "Plugins that draw into an element") |
 | `@ehtb/agent-ui/spec-tools`, `/components`, `/memoize`, `/sync-apps` | `patchSpec`, `listIds`, `expandComponents`, `defineElement`, `param`, `paramKey`, `slot`, `memoizeItem`, `syncApps` (one-way sync between two separate apps on a page, section 6) |
@@ -52,6 +52,7 @@ The package is imported by name. Every module has one specifier, types included.
 | `@ehtb/agent-ui/devtools` | the debug console (`mountDevtools`): what the app does, written to the browser console |
 | `@ehtb/agent-ui/cli/ssr-server.mjs`, `/cli/static-handler.mjs` | `createSsrServer`, `createStaticServer`: the servers behind `agent-ui serve` and `agent-ui dev`, for tests and examples. Not for production: a deployed site is served by the host's own file server |
 | `@ehtb/agent-ui/build` | the build pipeline as a library (Node only): `build`, `loadConfig`, `frameworkBuildOptions`, `prerender` (the static build), `discoverPages`, `formatReport` |
+| `@ehtb/agent-ui/build/build.mjs`, `/build/config.mjs`, `/build/prerender.mjs` | one stage of the build pipeline, the configuration loader and the static build, for a script that drives a build itself (Node only) |
 | `@ehtb/agent-ui/testing/dom-shim.mjs`, `/testing/helpers.mjs`, `/testing/json-schema.mjs`, `/testing/browser.mjs` | test helpers, Node only; in the repository the files are `test/support/*.mjs`. `browser.mjs` drives a real headless Chrome (section 10) |
 | `@ehtb/agent-ui/build/presets.mjs` | `frameworkBuildOptions` for the build configuration |
 
@@ -209,7 +210,7 @@ As a child, a binding renders text. `null` and `undefined` become empty; numbers
 
 | Field | Meaning |
 |---|---|
-| `tag` | One of the allowed tags, listed in `grammar.tags`: div span p h1 h2 h3 ul ol li button input label a section header footer main nav form select option textarea strong em b i small code pre blockquote hr br img table thead tbody tfoot tr th td caption dl dt dd details summary dialog aside article fieldset legend figure figcaption progress time. Void tags (`input`, `img`, `hr`, `br`) cannot have children. |
+| `tag` | One of the allowed tags, listed in `grammar.tags`: div span p h1 h2 h3 ul ol li button input label a section header footer main nav form select option textarea strong em b i small code pre blockquote hr br img table thead tbody tfoot tr th td caption dl dt dd details summary dialog aside article fieldset legend figure figcaption progress time, and the SVG tags svg g path circle ellipse rect line polyline polygon use (see "SVG"). Void tags (`input`, `img`, `hr`, `br`, and the SVG shapes) cannot have children. |
 | `id` | Stable address, rendered as `data-id`. Must be a unique non-empty string within the spec. Defaults to the spec path (see "Default ids"). Give an explicit id to anything tests or other agents must find across edits. |
 | `props` | `{name: literal \| binding}`. See "Props" below. |
 | `classes` | `{className: binding}`. Values must be bindings, never `true` or `false` literals; constant classes go in `props.class`. The final `class` attribute is the static `props.class` plus every class whose binding is truthy, written as one attribute and removed when empty. |
@@ -227,11 +228,13 @@ The validator reports names from other conventions at mount: `className`, `htmlF
 
 **Transitions.** After the first render, a row of an `each` or a branch of a `when` whose root element has `transition` gets `data-transition="enter"` for two frames when it is added. When it is removed it gets `data-transition="leave"` for that many milliseconds first, and ignores events meanwhile. CSS does the animating, for example `li { transition: opacity .2s } [data-transition] { opacity: 0 }`. State is final immediately; only the DOM removal is delayed. Initial and server-rendered markup never animates.
 
-**Moves.** A row of a keyed `each` whose root element has `transition` also animates when it changes position: before the reorder the runtime measures the row (`getBoundingClientRect`), after it plays `element.animate` from the old spot to the new one (a translate, FLIP) for that many milliseconds. Nothing else is needed in the spec or the CSS, and only the rows that moved are animated. It is skipped, and the row simply jumps, where there is no layout or no `Element.animate` (server rendering, the test shim), while `ui.replaying`, and when the user prefers reduced motion. The animation sets `transform` for its length, so do not rely on a transform of your own on such a row.
+**Moves.** With the plugin `withMoves` (`@ehtb/agent-ui/moves`; `moves` for `app()`), a row of a keyed `each` whose root element has `transition` also slides when it changes position: before the reorder the plugin measures the row (`getBoundingClientRect`), after it plays `element.animate` from the old spot to the new one (a translate, FLIP) for that many milliseconds. Nothing else is needed in the spec or the CSS, and only the rows that moved are animated. Without the plugin the rows jump to their places, and in development the runtime says so in the console, once per list, with the import. It is skipped, and the row simply jumps, where there is no layout or no `Element.animate` (server rendering, the test shim), while `ui.replaying`, and when the user prefers reduced motion. The animation sets `transform` for its length, so do not rely on a transform of your own on such a row.
 
-**Following the pointer.** `follow: <boolean binding>` in `props` (the drag overlay of a sortable list, a slider thumb). While it is true the runtime listens to `pointermove` on the document, and only for that time. On every frame it writes `--follow-x` and `--follow-y` (for example `37px`) on the element: how far the element must move from the place its layout gave it, so that it stays under the pointer where it was grabbed. The first move after `follow` turns true fixes the start. The CSS decides what to do with them: `[data-dragging] { transform: translate(var(--follow-x, 0px), var(--follow-y, 0px)); pointer-events: none }`. The coordinates are not state and not in the log, so replay and tests are unaffected, and nothing runs while `follow` is false. When a keyed `each` reorders its rows, the following row is re-placed at once, and it is not part of the "Moves" animation. Give a following row `pointer-events: none`, or the rows beneath it never receive `pointerover`. Touch: the pointer is captured by the element that received `pointerdown`, and its moves still reach the document, so the element follows. The properties are removed when `follow` turns false, and nothing is written after that. `follow` follows whatever binds it, not how the drag began: a state that is true after a keyboard pick-up makes the element follow the mouse too. If a page ends the drag with a handler on a broad ancestor (a `pointerup` on `main`), every pointer release there is a logged action, a no-op when nothing is being dragged. A literal other than `true`/`false` is refused by the validator.
+**Following the pointer.** `follow: <boolean binding>` in `props` (the drag overlay of a sortable list, a slider thumb). The plugin `withFollow` (`@ehtb/agent-ui/follow`; `follow` for `app()`) does the following; a spec that uses `follow` without it fails at mount with that import in the message. While it is true the plugin listens to `pointermove` on the document, and only for that time. On every frame it writes `--follow-x` and `--follow-y` (for example `37px`) on the element: how far the element must move from the place its layout gave it, so that it stays under the pointer where it was grabbed. The first move after `follow` turns true fixes the start. The CSS decides what to do with them: `[data-dragging] { transform: translate(var(--follow-x, 0px), var(--follow-y, 0px)); pointer-events: none }`. The coordinates are not state and not in the log, so replay and tests are unaffected, and nothing runs while `follow` is false. When a keyed `each` reorders its rows, the following row is re-placed at once, and it is not part of the "Moves" animation. Give a following row `pointer-events: none`, or the rows beneath it never receive `pointerover`. Touch: the pointer is captured by the element that received `pointerdown`, and its moves still reach the document, so the element follows. The properties are removed when `follow` turns false, and nothing is written after that. `follow` follows whatever binds it, not how the drag began: a state that is true after a keyboard pick-up makes the element follow the mouse too. If a page ends the drag with a handler on a broad ancestor (a `pointerup` on `main`), every pointer release there is a logged action, a no-op when nothing is being dragged. A literal other than `true`/`false` is refused by the validator.
 
-**Drag and drop.** The grammar has no `dragstart`, `dragover`, `drop` or `dataTransfer`, and none will be added: a drag is the bubbling pointer events (`pointerdown` on a grip, `pointerover` on the rows it crosses, `pointerup` and `pointercancel`) calling actions, with `follow` for the picked-up row and `transition` for the others. A touch pointer is captured by the grip and never reports the rows it crosses, so the keyboard (Enter, the arrow keys, Escape) is both the touch path and the accessible one, and belongs in every sortable list. Copy the recipe `drag-reorder` (`agent-ui explain drag-reorder`, tested in `test/examples/cookbook.test.mjs`); `examples/react-converted-components` builds a reusable `sortable` on the same pattern.
+**Drag and drop.** The grammar has no `dragstart`, `dragover`, `drop` or `dataTransfer`, and none will be added: a drag is the bubbling pointer events (`pointerdown` on a grip, `pointerover` on the rows it crosses, `pointerup` and `pointercancel`) calling actions, with `follow` for the picked-up row and `transition` for the others (the page lists their plugins, `withFollow` and `withMoves`). A touch pointer is captured by the grip and never reports the rows it crosses, so the keyboard (Enter, the arrow keys, Escape) is both the touch path and the accessible one, and belongs in every sortable list. Copy the recipe `drag-reorder` (`agent-ui explain drag-reorder`, tested in `test/examples/cookbook.test.mjs`); `examples/react-converted-components` builds a reusable `sortable` on the same pattern.
+
+**SVG.** A closed subset for icons and simple drawings: `svg`, `g`, `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, `polygon`, `use` (`grammar.svgTags`). The runtime makes them in the SVG namespace; on the server they are markup, which an HTML parser puts in that namespace by itself. Their attributes are `grammar.svgAttributes` (`viewBox`, `fill`, `stroke`, `stroke-width`, `d`, `cx`, `points`, `transform`, ...) besides `href`, `width`, `height`, `class`, `style` and the global ones; an SVG attribute on an HTML tag is refused. The rules, all checked by the validator: a shape (every SVG tag but `svg`) stands only inside an `svg`; an `svg` holds only SVG tags, no text and no HTML; an `svg` either says what it shows (`role: 'img'` with an `aria-label`) or is `'aria-hidden': 'true'` beside text that says it. An icon used many times comes from a sprite in `public/` (`use({ href: '/icons.svg#star' })`, the base path added like any URL). What is drawn from data (the points of a line) is a derived value. A large or interactive chart is a library drawn by a plugin (`mountElement`). Copy recipe `svg-icons`.
 
 ### Events and handlers
 
@@ -471,6 +474,19 @@ Updates flush in one microtask. After `dispatch`, `state()` and `derived()` are 
 
 A plugin is `(api) => void`, run once after mount. A plugin that talks to the outside world must not act while `api.replaying` is true (see `resources`).
 
+**The plugins the package ships.** Each is its own import, so a page downloads only the ones it lists. A page lists the `with...` form in `plugins` of page.js; an app made with `app()` lists the plugin itself. `agent-ui explain plugins` prints this table.
+
+| Plugin (page form) | Import | List it when | Without it |
+|---|---|---|---|
+| `withResources` (`resources(fetch)` for `app()`) | `@ehtb/agent-ui/resources` | a namespace declares `resources` | the page fails at start: "declares resources, but no plugin loads them" |
+| `({ win }) => windowEvents(win, { ... })` | `@ehtb/agent-ui/window-events` | an action answers an event of the window or the document (`resize`, `keydown.Control+k`, `online`) | nothing listens |
+| `withHead` | `@ehtb/agent-ui/head` | the page's `head` is a function of the state and must follow it in the browser | the page fails at start in development: "head.title follows the state, but nothing keeps the browser's document current" |
+| `withFollow` (`follow` for `app()`) | `@ehtb/agent-ui/follow` | the spec uses the `follow` prop (a dragged row under the pointer) | the app fails at mount: "the spec uses "follow", but no plugin handles it" |
+| `withMoves` (`moves` for `app()`) | `@ehtb/agent-ui/moves` | rows with `transition` should slide to their new place when the list reorders | rows jump; development says so in the console once per list |
+| `withNavigation` (in a shell's `plugins`) | `@ehtb/agent-ui/navigation` | the shell's pages link to each other with `soft: true` or `route.go` | soft links are normal page loads |
+
+Two helpers are for writing a plugin, not plugins themselves: `mountElement` (`@ehtb/agent-ui/mount-element`) claims an element to draw into, and `syncApps` (`@ehtb/agent-ui/sync-apps`) connects two apps. The debug console is not listed either: `debug: true` loads it.
+
 A page lists plugin factories, `plugins: [withResources]`, and each factory receives the environment, `(environment) => (api) => void`: `win`, `fetchFunction`, `dev`, `isServerRendering` and, for a shell's plugins, `shellName`.
 
 **The server runs the plugins too.** While a page is rendered on the server (`agent-ui serve`, `agent-ui build`'s static pages, `agent-ui check`), `isServerRendering` is `true` and `win` is a stand-in that holds only `location`, `addEventListener`, `removeEventListener`, `setTimeout`, `clearTimeout` and the same two listener functions on `win.document`. In a browser `isServerRendering` is `false`; in a test that mounts a page with the shim it is not set (so false), and the plugin runs against the shim's window. A plugin with an effect of its own (a timer, a listener on the window, a request, a library that needs a real browser) starts with `if (isServerRendering) return;`. A plugin that reaches for anything else on the server's window fails the render with the original message and this advice. A plugin whose library needs a real canvas or layout, which the shim has not either (Chart.js), also checks `win === window`, as `examples/loading-states` does. Recipe: `browser-only-plugin` (`agent-ui explain browser-only-plugin`).
@@ -530,6 +546,8 @@ namespaces: { items: {
 
 ### syncApps (`src/sync-apps.js`): two separate apps on one page
 
+The shell's `reads` are built on it, and a page the host owns with two agent-ui apps in it uses it directly (`examples/islands`).
+
 **Purpose, and only this:** keep two *independent apps* that share one page informed about each other, one way. The typical case is a widget app (a header with a cart count) next to the page app; a shell (section 13) uses it for what it reads from its page. It has nothing to do with the `<a>` element. It is **not** for sharing state inside one app (use `derive` to read another namespace and `calls` to cause a change in one), **not** for adding namespaces or routes at runtime, and **not** two-way.
 
 ```js
@@ -559,6 +577,8 @@ export const every = (win, { milliseconds, action }) => (api) => {
   win.setInterval(() => { if (!api.replaying) api.dispatch(action); }, milliseconds);
 };
 ```
+
+What a plugin may use: `api.watch` and `api.dispatch` (state out, events in), `api.replaying` and `api.onReplay`, `api.onDestroy`, `api.onError` and `api.report`, `api.onAction`, `api.observeElements` (what `mountElement` is built on), and the two hooks the motion plugins are built on: `api.onReorder(handler)` (called before every reorder of a list with the row elements that stay; the function it returns runs after the rows are placed) and `api.handleProperty(name, handler)` (the plugin that writes a prop the grammar leaves to a plugin; today only `follow`). `src/follow.js` and `src/moves.js` are short plugins to read as models.
 
 ### Plugins that draw into an element (`src/mount-element.js`)
 
@@ -665,7 +685,10 @@ The validator lives in `src/validate.js` and is imported by `src/ui.js`. Product
 | `input\|select\|textarea\|progress needs aria-label` | Add `aria-label`. Not needed for `type: 'hidden'`. |
 | `button\|a needs text or aria-label` | Give it children or a label. |
 | `img needs alt (use "" for decorative images)` | Add `alt`. |
-| `img\|input\|hr\|br cannot have children` | Void elements. |
+| `svg needs aria-label with role: 'img' ... or 'aria-hidden': 'true' ...`, `svg has aria-label but not role: 'img'` | Say what the drawing shows (`role: 'img'` and `aria-label` together), or hide a decorative icon next to text that says it. |
+| `path is drawn inside an svg`, `an svg holds only g, path, ...`, `an svg holds no text` | SVG shapes stand inside an `svg`, and an `svg` holds only SVG tags. |
+| `props.fill: fill is an attribute of an svg drawing, and this is a div` | Put the attribute on the `svg` or a shape, or style the element with CSS. |
+| `img\|input\|hr\|br\|path\|... cannot have children` | Void elements, the SVG shapes among them. |
 
 ### Components
 
@@ -798,6 +821,8 @@ Everything is testable headless, in Node, with no dependencies. In the framework
 | `waitFor(condition, { timeout?, interval? }?)` | Polls until `condition()` is true and fails, naming the condition, after `timeout` ms (default 3000). Use it instead of a fixed `sleep` to wait for something a timer does, such as a transition ending: a sleep is a guess that a busy machine makes wrong. |
 | `assertNoErrors(ui)` | Fails with the messages of `ui.errors` when the app reported any (a duplicate list key, an action that threw). Call it after `await ui.settle()` and after the step that opens a branch. |
 | `assertRepeatable(ui, actionName, args?)` | Dispatches an action (`'todos.add'`), settles, dispatches it again with the same args and asserts no state key (`todos.items`) changed. Use it on idempotent user actions (selection, filters, form lookup). |
+| `measureAction(ui, actionName, args?)` | Dispatches an action, settles, and returns what it cost, counted rather than timed (the same on every machine): `domWrites` (DOM writes a browser would perform, counted by the test DOM, so mount on it), `effectRuns` (bindings, derived values and watches that ran: a binding runs for every row whose item got a new reference, even when it then writes nothing), `stateChanged` and `derivedChanged` (the keys whose value was replaced), `elements` and `elementsBefore` (what `ui.outline()` shows). |
+| `assertCost(ui, actionName, args, limits)` | `measureAction`, then fails when a count is over its limit (`{ domWrites?, effectRuns?, stateChanged?, derivedChanged?, elements? }`), with what it measured and where that cost usually comes from. Put it on the action that changes one row of a long list: `assertCost(ui, 'todos.toggle', { id: 3 }, { effectRuns: 10 })` fails when every row runs again. `countEffectRuns()` (from `@ehtb/agent-ui`) is the counter it reads. |
 
 Things to know when writing tests:
 
@@ -1057,7 +1082,7 @@ A static site (`agent-ui build --static`) is described in `BUILD.md`.
 
 ### Spec schema and TypeScript declarations
 
-`docs/spec.schema.json` is a JSON Schema (2020-12) of the spec, generated from `grammar` by `agent-ui schema`. A test fails when it is stale. Use it for constrained or structured generation of specs and for editor validation. It checks structure only; the validator owns semantics such as action names, argument types, ids, accessibility and `{item}` scope.
+`docs/spec.schema.json` is a JSON Schema (2020-12) of the spec, generated from `grammar` by `agent-ui schema`. A test fails when it is stale. Use it for constrained or structured generation of specs and for editor validation. It checks structure only; the validator owns semantics such as action names, argument types, ids, accessibility, `{item}` scope and where SVG may stand. A spec that matches the schema can still be refused: the check is `validate()` (and `agent-ui check`), never the schema alone.
 
 `src/*.d.ts` declare the whole API for `// @ts-check` in plain JavaScript and for TypeScript projects. `npm run typecheck` checks them with `tsc`, which is run separately; `test/types/check.js` is the usage and error fixture.
 
@@ -1071,7 +1096,7 @@ A static site (`agent-ui build --static`) is described in `BUILD.md`.
 
 ## 13. Pages: URLs, per-page APIs and head (`src/pages.js`; the server side is the project's `api` module)
 
-A page is a URL, and a URL is a folder: every folder below `pages/` with a `page.js` is a page and its path is its URL. There is no list of pages, no base path and no entry file to write; the build finds the folders and generates the entries (`BUILD.md`). GUIDE.md explains the model and has the recipes. The layout of a project:
+A page is a URL, and a URL is a folder: every folder below `pages/` with a `page.js` is a page and its path is its URL. There is no list of pages and no entry file to write; the build finds the folders and generates the entries (`BUILD.md`). A site below a path of its domain sets `basePath` in `build.config.mjs` and keeps writing its own paths (`BUILD.md`, "A site below a base path"). GUIDE.md explains the model and has the recipes. The layout of a project:
 
 ```
 pages/page.js                  export const page = { ... }      the page at "/": its behavior (the file the browser entry imports)
@@ -1156,7 +1181,7 @@ A page uses it with `shell` in `page.js` (the behavior) and `export { shell }` i
 1. It fetches the link's document (the same server render a browser would get) and reads from it the state the page starts from, the page's entry file and its stylesheets.
 2. It adds the stylesheets that are not loaded yet (and waits for them), and removes the ones only the old page used.
 3. It imports the entry file (once; a visit later finds it loaded) and finds the page it registered (`findEntry`, `startPage(page, { url })`).
-4. It pushes the address (`history.pushState`), applies the head of the fetched document (below) and starts the new page in the same element: the old page's app is destroyed (`destroy()`, section 7), and the new one starts from the fetched state (`route.params` read from the new URL, `route.hydrate` dispatched, the title and a head that follows the state kept current by `withHead`), the shell is told the path (`route.arrive`), the page's element takes the focus, and the window scrolls to the top (or to the `#hash`).
+4. It pushes the address (`history.pushState`), applies the head of the fetched document (below) and starts the new page in the same element: the old page's app is destroyed (`destroy()`, section 7), and the new one starts from the fetched state (`route.params` read from the new URL, `route.hydrate` dispatched, the title and a head that follows the state kept current by `withHead`), the shell is told the path (`route.arrive`), the page's element takes the focus, and the window scrolls to the top (or to the `#hash`). Back and forward scroll to where the visitor was on that entry: the plugin keeps a key per history entry in `history.state` (`agentUiEntry`, beside what the site keeps there), remembers the position of the entry being left, writes it into the entry on `pagehide` (`agentUiScroll`) so a reload and a return through the back/forward cache (`pageshow`) restore it too (the entry a soft navigation pushes starts with only the plugin's key, as a page load's entry starts with no state), and sets `history.scrollRestoration` to `"manual"`, because the browser's own restoration would scroll before the new page exists.
 5. It announces the new page. The page's element becomes a `region` named by the document's new title, so a screen reader reads it when it takes the focus. A site that wants a live announcement too puts a live region in its shell with `domId: 'agent-ui-announcer'` (the HTML id; `id` stays the spec address), usually visually hidden with `aria-live: 'polite'`; the plugin writes the new title into it. A normal page load announces itself by changing the document title; this is the same message for a swap.
 
 **The head of a soft navigation** is read from the text of the fetched document: the description, the attributes of `<html>` and `<body>` exactly as that document has them (the template's own, such as `lang`, and the page's), and the `meta`, `link`, `script` and `style` elements the page wrote (found between the `agent-ui-head` and `agent-ui-body` comments, never inside the text of a script). It differs from a load in three ways. A script that changed is put where the old one was (the order of the document is kept) and runs once the entry file is imported and before the new page's markup exists (a script with a `src` runs when it has loaded, whenever that is); a script that is the same as the one in the document is not run again; a script with a `src` at the end of `<body>` is not waited for. The text of a script built from the state (JSON-LD) is the document's: `withHead` does not rewrite it when the state changes later. A stylesheet is not part of `head`: write it in `page.css`, which the build links and the navigation waits for.
@@ -1167,7 +1192,7 @@ Back and forward do the same swap for the address they return to, without a new 
 
 **On the server and in the build.** `renderPage(create, { createShell, dev: false })` renders the shell with the page inside it (the document's mount point is then `<div id="shell">`, and the page's element is in its markup); the page definition offers `createShell`. A production build writes each shell's content once (`.agent-ui/shells/<name>.js`, a module of data that the entries of its pages share, so one chunk) and every page's entry registers itself under its own file's URL. `window.__shell` is the shell's app in a browser (removed when the shell is destroyed). If the shell cannot be made, the error goes to the console and the page's element stays where the server put it; `ui.tree()` and `ui.outline()` of each app leave out the app inside it.
 
-**Not built, on purpose:** prefetching the next page, restoring the scroll position on back and forward, transitions between pages, and keeping a page's state across a swap (what must outlive a page lives in the shell or on the server). `src/navigation.js` is the plugin with its parts injectable (`navigation({ win, fetchFunction, shellName, importModule, loadStylesheet })`), for tests and for hosts that load modules their own way. The shop example (`examples/shop`) uses all of this and its `browser.test.mjs` drives it in a real Chrome.
+**Not built, on purpose:** prefetching the next page, transitions between pages, scroll positions inside scrolling containers, and keeping a page's state across a swap (what must outlive a page lives in the shell or on the server). `src/navigation.js` is the plugin with its parts injectable (`navigation({ win, fetchFunction, shellName, importModule, loadStylesheet })`), for tests and for hosts that load modules their own way. The shop example (`examples/shop`) uses all of this and its `browser.test.mjs` drives it in a real Chrome.
 
 ### URL patterns (`@ehtb/agent-ui/url-pattern`)
 
@@ -1201,9 +1226,16 @@ To protect a page, return the public session state in `initialStateFor` and answ
 
 ### Static generation
 
-`agent-ui build --static` also renders every page and writes it to `<path>/index.html` (the page `/` to `index.html`), so a file host can serve finished pages with no server. It is for a site that names every page: a page whose path has parameters (`/event/:id`, `/docs/*path`) has no single file, so the build stops with an error that names the pages. Without `--static` nothing is rendered at build time, and `agent-ui serve` renders every URL per request.
+`agent-ui build --static` also renders every page and writes it to `<path>/index.html` (the page `/` to `index.html`), so a file host can serve finished pages with no server. A page whose path has parameters (`/event/:id`, `/docs/*path`) is written once for every URL its `view.js` lists:
 
-`agent-ui check` renders the pages whose path has no parameters; a page with parameters is listed as a note, and its spec is still validated. A page has no key that lists URLs.
+```js
+// pages/event/[id]/view.js
+export const paths = ['/event/1', '/event/2'];         // or: export const paths = async () => (await readEvents()).map((event) => `/event/${event.id}`);
+```
+
+`view.js` runs only in Node, so a function may read files or a database and never reaches a browser. Each URL must match the page's pattern, be plain (letters, digits and `. _ ~ -` in its segments, no query, no trailing slash) and appear once; a page without parameters has no `paths`. A page with parameters that lists none stops a static build with an error that names the pages and the fix. Without `--static` nothing is rendered at build time, and `agent-ui serve` renders every URL per request.
+
+`agent-ui check` renders the same URLs: every page without parameters, and a page with parameters at its `paths`. One that lists none is printed as a note, and its spec is still validated.
 
 ### Per-page API
 
@@ -1220,7 +1252,7 @@ export const createItemApi = () => ({
 - `handle` and `handleForm` receive the same request context as the page (`method`, `pathname`, `search`, `query`, `headers`, `cookies`, `signal`), plus `body` or `form`. See section 12 for the shape and for `initialStateFor`, `stateForBrowser` and `transformResponse`.
 - A table cannot answer another table's paths. An unknown path below `apiBase` is a 404 JSON answer. A path that exists for other methods is a 405 with an `allow` header.
 - An endpoint returns `{ status, body, headers? }`, or `{ status, body, headers?, raw: true }` when the body is already the exact bytes to send (CSV, XML, a file). A JSON answer is sent as JSON with `application/json; charset=utf-8`. A raw answer must be a string or a `Uint8Array` and must set its own `content-type` unless the body is empty. A string raw body may be rewritten by `transformResponse`; a `Uint8Array` is sent unchanged, its hook receives an empty `body`, and returning a body for it is refused. An API answer is `cache-control: no-store` unless the endpoint or `transformResponse` sets one, and it may set a cookie; the header rules are the ones in section 12.
-- The handler reads a request body only as JSON (`application/json`, including `application/*+json`) or a URL-encoded form (`application/x-www-form-urlencoded`), with the `maxBodyBytes` limit (default 100 KB). A body with no content type, `multipart/form-data` or another type is answered 415; a body it cannot parse is answered 400. An empty body is accepted as `{}`. A host framework that parses the body itself can put the parsed value on `request.body`, which the handler uses as it is. Multipart uploads, streaming request bodies, SSE and WebSocket endpoints are not part of this handler; receive an upload in a route of the host and pass the parsed value as `request.body`.
+- The handler reads a request body only as JSON (`application/json`, including `application/*+json`) or a URL-encoded form (`application/x-www-form-urlencoded`), with the `maxBodyBytes` limit (default 100 KB). A body with no content type, `multipart/form-data` or another type, and a compressed body (any `content-encoding` but `identity`), is answered 415; a body over `maxBodyBytes` is answered 413 (a declared `content-length` before reading, a chunked body while it is read); a body it cannot parse is answered 400. Decoding a compressed body is the host's: its body parser decodes it and passes the value as `request.body`. An empty body is accepted as `{}`. A host framework that parses the body itself can put the parsed value on `request.body`, which the handler uses as it is. Multipart uploads, streaming request bodies, SSE and WebSocket endpoints are not part of this handler; receive an upload in a route of the host and pass the parsed value as `request.body`.
 - A form handler returns the outcome as `initialState`, nested by namespace; the URL's parameters are filled in for you, so the plain HTML form works without JavaScript. `url` is the page that shows the outcome: a local path starting with `/`, not `//`, with no backslash or encoded separator at the start. A form may instead answer `{ redirect }` under the same rule. `redirect` is answered with 303 (post/redirect/get), so a reload does not post again. Both outcomes may carry `headers`.
 - The framework sets `cache-control: no-store` on a form response; its `headers` cannot set `location` or `cache-control`, and `transformResponse` can replace the framework's cache header, but a form response must not be made cacheable.
 - The browser side of the same feature is a `resources` entry in the page's namespace. Keep the validation rules in one pure module imported by both.
@@ -1256,7 +1288,7 @@ head: {
 
 ### Check
 
-`agent-ui check` (`--config=<file>`) renders every page whose path has no parameters, in development mode. It reports spec problems, action and resource errors, data that never loaded, missing titles, an invalid `status`, and links that lead nowhere in one list, and exits with code 1 when anything is wrong.
+`agent-ui check` (`--config=<file>`) renders every page in development mode, a page with parameters at the URLs its view.js lists in `paths`. It reports spec problems, action and resource errors, data that never loaded, missing titles, an invalid `status`, and links that lead nowhere in one list, and exits with code 1 when anything is wrong. It prints a table of what each URL it rendered costs: the elements shown (page and shell), the rows of the largest list, the bytes of the state script. `budgets` in `build.config.mjs` (`stateBytes`, `elements`, `listRows`) turn a page over a limit into a problem (`BUILD.md`, "Budgets"). `checkProject` returns the same numbers as `measurements`.
 
 ## 14. Limits and what is deliberately not here
 
@@ -1275,11 +1307,9 @@ Not built, with reasons (details in `DESIGN.md`):
 - A session store, an auth flow, a CSP policy or a cache layer. `createSsrHandler` exposes the request and three hooks (`initialStateFor`, `stateForBrowser`, `transformResponse`); the project owns the cookie format, the login route and the policy. Shipping one would choose them for every app.
 - Streaming server rendering and partial hydration. A page is rendered to one string after it is ready (or answered 503 on timeout by default); there is no stream of earlier markup and no hydration of a partial tree. The state script is the whole handover.
 - File uploads, streaming request bodies, Server-Sent Events and WebSocket endpoints. `createSsrHandler` reads a JSON or URL-encoded body once, up to `maxBodyBytes`; a host that needs multipart, a raw stream or a long-lived connection receives it in its own route and passes parsed data as `request.body`, or serves it beside the handler.
-- Serving the site below a path other than `/`. Asset URLs are root-absolute and the page URL patterns start at the root; put a site on its own host or subdomain.
-- Static generation of a page whose path has parameters. `agent-ui build --static` refuses such a page; use `agent-ui serve` or the host's own server for it.
 - Internationalization and right-to-left layout as framework features. Text and direction are ordinary state and attributes; a project decides how it translates, stores a locale and sets `dir`. The framework ships no message catalogue and no locale-aware URL scheme.
-- Scroll restoration on back and forward, and a cross-page transition. A soft navigation scrolls to the top; the browser's own scroll restoration is not reproduced.
-- A built-in load benchmark or cross-browser test matrix. `examples/shop` records measured chunk sizes and its `browser.test.mjs` drives Chrome; there is no general performance budget or matrix in the framework.
+- A cross-page transition, and scroll positions inside scrolling containers across a soft navigation (the window's position is restored on back and forward).
+- A built-in load benchmark or cross-browser test matrix. Cost is counted, not timed: `measureAction`/`assertCost` in tests, the page table of `agent-ui check` and the build, and `budgets`. A few tests drive Chrome; Firefox and Safari are not run.
 
 Known limits:
 
@@ -1287,7 +1317,7 @@ Known limits:
 - There is no virtualization. Very long lists render every row.
 - `{item}` in a nested `each` reads only the innermost row. An outer row is read with `as` and `{row}`.
 - A select's `value` is not re-applied when its options change after mount.
-- No SVG, canvas or media tags. Events are limited to the list in section 3.
+- SVG is a closed subset for icons and simple drawings (section 3, "SVG"); no `text`, gradients, filters, canvas or media tags. Events are limited to the list in section 3.
 - `tree()` and `outline()` read the DOM, so they reflect what is rendered.
 - Typed-but-unsubmitted input and the focus are carried over when server markup is replaced, by `data-id`; scroll positions inside scrolling containers and running animations are not.
 

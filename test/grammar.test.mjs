@@ -7,6 +7,7 @@ import { DomElement } from '../src/server-dom.js';
 import { mountSpec, outlineById } from './support/helpers.mjs';
 
 const { grammar, validate } = await import('../src/ui.js');
+const { button, circle, div, g, path, state, svg, use } = await import('../src/spec.js');
 
 const textOf = (ui, id) => outlineById(ui.outline(), id)?.text;
 const spanWith = (id, binding) => ({ tag: 'span', id, children: binding });
@@ -462,4 +463,53 @@ test('a when or each that is a direct child of a when branch is removed complete
   await ui.settle();
   assert.equal(findElements(root, (element) => element.localName === 'li').length, 3);
   assert.equal(ui.errors.length, 0);
+});
+
+// ---------------------------------------------------------------------------------------------------- SVG
+
+test('svg: drawn in the SVG namespace, rendered on the server, its shapes and attributes in place; a sprite reference gets the base path', async () => {
+  const { app } = await import('../src/ui.js');
+  const { createRoot, findElements } = await import('./support/dom-shim.mjs');
+  const { createServerDocument, serialize } = await import('../src/server-dom.js');
+  const spec = button(
+    { id: 'save', 'aria-label': 'Save' },
+    svg({ id: 'icon', viewBox: '0 0 24 24', 'aria-hidden': 'true', fill: 'none', stroke: 'currentColor', 'stroke-width': 2 }, path({ d: 'M5 12l5 5L20 7' }), circle({ cx: 12, cy: 12, r: state('icon.radius') }), use({ href: '/icons.svg#check' })),
+  );
+  const namespaces = { icon: { state: { radius: 9 }, actions: { grow: { args: {}, run: (store) => store.set('radius', 10) } } } };
+  const created = [];
+  const document = globalThis.document;
+  const createElementNS = document.createElementNS;
+  document.createElementNS = (namespace, tag) => (created.push([namespace, tag]), createElementNS(namespace, tag));
+  try {
+    const root = createRoot();
+    const ui = app({ namespaces, spec, root, dev: true, basePath: '/shop' });
+    assert.deepEqual(created, [['http://www.w3.org/2000/svg', 'svg'], ['http://www.w3.org/2000/svg', 'path'], ['http://www.w3.org/2000/svg', 'circle'], ['http://www.w3.org/2000/svg', 'use']]);
+    const circleElement = findElements(root, (element) => element.localName === 'circle')[0];
+    assert.equal(String(circleElement.getAttribute('r')), '9');
+    ui.dispatch('icon.grow');
+    await ui.settle();
+    assert.equal(String(circleElement.getAttribute('r')), '10');
+    assert.equal(findElements(root, (element) => element.localName === 'use')[0].getAttribute('href'), '/shop/icons.svg#check');
+  } finally {
+    document.createElementNS = createElementNS;
+  }
+  const server = createServerDocument();
+  const serverRoot = server.createElement('div');
+  const ui = app({ namespaces, spec, root: serverRoot, dev: false });
+  assert.match(serialize(serverRoot), /<svg data-id="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path data-id="0\.0\.0" d="M5 12l5 5L20 7"><\/path><circle data-id="0\.0\.1" cx="12" cy="12" r="9"><\/circle>/);
+  ui.destroy();
+});
+
+test('svg rules: shapes only inside an svg, only shapes and no text inside one, a label or aria-hidden, svg attributes on svg tags', () => {
+  const problems = (spec) => validate(spec, {});
+  assert.deepEqual(problems(svg({ viewBox: '0 0 24 24', role: 'img', 'aria-label': 'Done' }, g(null, path({ d: 'M0 0' })))), []);
+  assert.deepEqual(problems({ tag: 'div', children: { tag: 'path', props: { d: 'M0 0' } } }), ["$.0: path is drawn inside an svg. Put it in svg({ viewBox: '0 0 24 24', 'aria-hidden': 'true' }, ...)"]);
+  assert.deepEqual(problems({ tag: 'svg', props: { 'aria-hidden': 'true' }, children: [{ tag: 'span', children: 'x' }] }), ['$.0: an svg holds only g, path, circle, ellipse, rect, line, polyline, polygon, use, not span. Put the span next to the svg', '$.0.0: an svg holds no text. Put the text next to the svg, or say it with aria-label on the svg']);
+  assert.deepEqual(problems({ tag: 'svg', children: { tag: 'path', props: { d: 'M0 0' } } }), ["$: svg needs aria-label with role: 'img' (a drawing that says something) or 'aria-hidden': 'true' (a decorative icon next to text that says it)"]);
+  assert.deepEqual(problems({ tag: 'svg', props: { 'aria-label': 'Done' } }), ["$: svg has aria-label but not role: 'img'. Write role: 'img' with the label, so assistive technology reads the drawing as one image with that name"]);
+  assert.deepEqual(problems({ tag: 'div', props: { fill: 'red' }, children: 'x' }), ['$.props.fill: fill is an attribute of an svg drawing, and this is a div. Put it on the svg or one of its shapes, or style the div with CSS']);
+  assert.deepEqual(problems({ tag: 'svg', props: { 'aria-hidden': 'true' }, children: { tag: 'path', props: { d: 'M0 0' }, children: 'x' } }), ['$.0: path cannot have children', '$.0.0: an svg holds no text. Put the text next to the svg, or say it with aria-label on the svg']);
+  assert.match(problems({ tag: 'svg', props: { 'aria-hidden': 'true', viewbox: '0 0 1 1' } })[0], /unknown attribute "viewbox"\. Did you mean "viewBox"\?/);
+  assert.throws(() => div({ fill: 'red' }, 'x'), /div\(\.\.\.\): fill is an attribute of an svg drawing, and this is a div\. Put it on the svg or one of its shapes, or style the div with CSS/);
+  assert.throws(() => path({ d: 'M0 0' }, 'x'), /path cannot have children/);
 });

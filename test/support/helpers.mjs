@@ -1,7 +1,8 @@
 // Shared test helpers. Imported by the *.test.mjs files; documented in docs/API.md ("Testing").
-import { createRoot } from './dom-shim.mjs';
+import { createRoot, mutations } from './dom-shim.mjs';
 
-const { app } = await import('../../src/ui.js');
+const { app, countEffectRuns } = await import('../../src/ui.js');
+const { didYouMean } = await import('../../src/messages.js');
 
 // Mounts a throwaway app: mountSpec({ namespaces, spec }) -> { ui, root }.
 export const mountSpec = ({ namespaces = {}, initialState = {}, spec, plugins = [], dev = true }) => {
@@ -92,3 +93,63 @@ export const assertRepeatable = async (ui, actionName, args = {}) => {
     }
   }
 };
+
+// What one action costs, counted rather than timed, so the numbers are the same on every machine and a test can assert them:
+//   domWrites       DOM writes a browser would perform (insert, move, remove, attribute, text, value), counted by the test DOM;
+//                   the app must be mounted on it (mountSpec, or a root from createRoot)
+//   effectRuns      bindings, derived values and watches that ran again: a binding runs for each row whose item got a new
+//                   reference, even when it then writes nothing
+//   stateChanged    the state keys ("namespace.key") whose value was replaced
+//   derivedChanged  the derived values that got a new value (one that is structurally equal keeps its reference and is not counted)
+//   elements        the elements the app shows after the action (ui.outline()), and `elementsBefore`
+// It dispatches the action, settles, and throws when the action fails.
+export const measureAction = async (ui, actionName, args = {}) => {
+  await flushAsync(ui);
+  const changedKeys = (before, after) => Object.keys(after).flatMap((namespace) => Object.keys(after[namespace]).filter((key) => before[namespace]?.[key] !== after[namespace][key]).map((key) => `${namespace}.${key}`));
+  const countElements = (nodes) => nodes.reduce((total, node) => total + 1 + countElements(node.children ?? []), 0);
+  const stateBefore = ui.state();
+  const derivedBefore = ui.derived();
+  const elementsBefore = countElements(ui.outline());
+  const writesBefore = mutations.count;
+  const runsBefore = countEffectRuns();
+  const error = ui.dispatch(actionName, args);
+  if (error) throw new Error(`measureAction("${actionName}"): ${error}`);
+  await flushAsync(ui);
+  return {
+    domWrites: mutations.count - writesBefore,
+    effectRuns: countEffectRuns() - runsBefore,
+    stateChanged: changedKeys(stateBefore, ui.state()),
+    derivedChanged: changedKeys(derivedBefore, ui.derived()),
+    elements: countElements(ui.outline()),
+    elementsBefore,
+  };
+};
+
+// Fails when an action costs more than its budget: assertCost(ui, 'todos.toggle', { id: 3 }, { domWrites: 2 }). Limits are upper bounds
+// on domWrites, effectRuns, stateChanged and derivedChanged (counts) and elements; the message says what was measured and where the cost usually
+// comes from. Returns the measurement.
+const COST_LIMITS = ['domWrites', 'effectRuns', 'stateChanged', 'derivedChanged', 'elements'];
+export const assertCost = async (ui, actionName, args, limits) => {
+  if (!limits || typeof limits !== 'object' || !Object.keys(limits).length) throw new Error(`assertCost("${actionName}"): pass the limits as the fourth argument, for example { domWrites: 2 }. Allowed limits: ${COST_LIMITS.join(', ')}`);
+  for (const [name, value] of Object.entries(limits)) {
+    if (!COST_LIMITS.includes(name)) throw new Error(`assertCost("${actionName}"): unknown limit "${name}". ${didYouMean(name, COST_LIMITS)}Allowed limits: ${COST_LIMITS.join(', ')}`);
+    if (!Number.isInteger(value) || value < 0) throw new Error(`assertCost("${actionName}"): the limit ${name} is ${JSON.stringify(value)}. Write a whole number, 0 or more`);
+  }
+  const measured = await measureAction(ui, actionName, args);
+  const advice = {
+    domWrites: 'Rows that are created or written again usually have a key that changes, or items that lost their reference (replace only the changed item, keep the others)',
+    effectRuns: 'Bindings ran for rows that did not change: their items got new references, from an action that copies every item or a derived list that builds new objects on every change. Keep unchanged items as they are (memoizeItem in derive)',
+    stateChanged: 'An action that replaces keys it did not change writes a new reference: write only the keys that change',
+    derivedChanged: 'A derived value that is recomputed with a new object every time makes everything that reads it run again: return the previous items unchanged (memoizeItem)',
+    elements: 'The page shows more than the budget: show less at once (a page of the data, a branch that opens on request)',
+  };
+  for (const [name, limit] of Object.entries(limits)) {
+    const value = Array.isArray(measured[name]) ? measured[name].length : measured[name];
+    if (value > limit) {
+      const detail = Array.isArray(measured[name]) ? ` (${measured[name].join(', ')})` : '';
+      throw new Error(`assertCost("${actionName}"): ${name} is ${value}${detail}, over the limit of ${limit}. ${advice[name]}`);
+    }
+  }
+  return measured;
+};
+

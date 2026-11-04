@@ -32,12 +32,40 @@ test('package.json describes an importable ES module package', () => {
     }
   }
   for (const entry of manifest.files) assert.ok(existsSync(join(repositoryRoot, entry)), `files: ${entry} is missing`);
+  // The release files the README names as shipped are in the package, and the license is declared.
+  for (const releaseFile of ['README.md', 'LICENSE', 'CHANGELOG.md', 'SECURITY.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SUPPORT.md']) assert.ok(manifest.files.includes(releaseFile), `files: ${releaseFile} is not published`);
+  assert.equal(manifest.license, 'MIT');
   assert.ok(!manifest.files.includes('AGENTS.md'), 'the root AGENTS.md is for work on the framework and is not published; app authors read docs/AGENT-RULES.md');
   assert.ok(existsSync(join(repositoryRoot, manifest.bin['agent-ui'])));
   // Every public module with a declaration file is exported, so nothing documented is unreachable.
   const exported = new Set(Object.values(manifest.exports).flatMap((target) => (typeof target === 'string' ? [target] : Object.values(target))));
   for (const file of readdirSync(join(repositoryRoot, 'src')).filter((name) => name.endsWith('.d.ts'))) {
     assert.ok(exported.has(`./src/${file}`), `src/${file} is not reachable through "exports"`);
+  }
+});
+
+test('package.json names the repository, the issue tracker and public access', () => {
+  assert.equal(manifest.publishConfig?.access, 'public', 'a scoped package needs publishConfig.access "public"');
+  assert.match(manifest.repository?.url ?? '', /github\.com\/ehtb\/agent-ui/);
+  assert.match(manifest.homepage ?? '', /github\.com\/ehtb\/agent-ui/);
+  assert.match(manifest.bugs?.url ?? '', /github\.com\/ehtb\/agent-ui\/issues/);
+  assert.ok(manifest.author, 'package.json: author is missing');
+});
+
+test('every "types" target in "exports" exists, including the files a wildcard covers', () => {
+  for (const [subpath, target] of Object.entries(manifest.exports)) {
+    if (typeof target === 'string' || !target.types) continue;
+    if (!target.types.includes('*')) {
+      assert.ok(existsSync(join(repositoryRoot, target.types)), `${subpath}: types ${target.types} is missing`);
+      continue;
+    }
+    // A wildcard export promises a declaration for every module its default pattern covers.
+    if (!target.default.includes('*')) continue;
+    const directory = dirname(target.default);
+    for (const name of readdirSync(join(repositoryRoot, directory)).filter((file) => file.endsWith('.mjs'))) {
+      const typesFile = target.types.replace('*', name.slice(0, -'.mjs'.length));
+      assert.ok(existsSync(join(repositoryRoot, typesFile)), `${subpath}: ${directory}/${name} has no ${typesFile}`);
+    }
   }
 });
 
@@ -85,7 +113,7 @@ test('an installed copy builds with the agent-ui command: imports by package nam
     assert.deepEqual(Object.keys(output.pages).sort(), ['about', 'index']); // the page "/" is index.html
     assert.equal('rewrites' in output, false, 'the manifest holds no rewrite rules: a server always runs and renders the URLs itself');
     // The runtime (and, in production, the validator's primitives) sit in one shared chunk named agent-ui, loaded by both pages.
-    assert.deepEqual(output.chunks['agent-ui'].modules.map((path) => path.split('/').slice(-3).join('/')).sort(), ['agent-ui/src/error-messages.js', 'agent-ui/src/errors.js', 'agent-ui/src/messages.js', 'agent-ui/src/namespaces.js', 'agent-ui/src/runtime-checks.js', 'agent-ui/src/spec-core.js', 'agent-ui/src/ui.js', 'agent-ui/src/validate.js']);
+    assert.deepEqual(output.chunks['agent-ui'].modules.map((path) => path.split('/').slice(-3).join('/')).sort(), ['agent-ui/src/base-path.js', 'agent-ui/src/error-messages.js', 'agent-ui/src/errors.js', 'agent-ui/src/messages.js', 'agent-ui/src/namespaces.js', 'agent-ui/src/runtime-checks.js', 'agent-ui/src/spec-core.js', 'agent-ui/src/ui.js', 'agent-ui/src/validate.js']);
     assert.ok(output.pages.index.chunksLoadedAtStartup.includes('agent-ui') && output.pages.about.chunksLoadedAtStartup.includes('agent-ui'));
     assert.ok(output.chunks.devtools && !output.chunks.devtools.loadsEagerly); // import('@ehtb/agent-ui/devtools') is a lazy chunk
     assert.match(readFileSync(join(project.root, 'dist', output.chunks['agent-ui'].javascript), 'utf8'), /validate = \(\) => \[\]/); // the stub: validator omitted
@@ -120,6 +148,18 @@ test('the command line tool names its commands and rejects unknown ones', () => 
   const unknown = spawnSync(process.execPath, [join(repositoryRoot, 'bin/agent-ui.mjs'), 'launch'], { encoding: 'utf8' });
   assert.equal(unknown.status, 1);
   assert.match(unknown.stderr, /unknown command "launch"\. Commands: build, dev, serve, check, schema, explain, init\n$/);
+});
+
+test('the command line tool prints its version and usage', () => {
+  const version = spawnSync(process.execPath, [join(repositoryRoot, 'bin/agent-ui.mjs'), '--version'], { encoding: 'utf8' });
+  assert.equal(version.status, 0, version.stderr);
+  assert.equal(version.stdout.trim(), manifest.version);
+  const help = spawnSync(process.execPath, [join(repositoryRoot, 'bin/agent-ui.mjs'), '--help'], { encoding: 'utf8' });
+  assert.equal(help.status, 0, help.stderr);
+  for (const command of ['build', 'dev', 'serve', 'check', 'schema', 'explain', 'init']) assert.match(help.stdout, new RegExp(`\\b${command}\\b`));
+  const noCommand = spawnSync(process.execPath, [join(repositoryRoot, 'bin/agent-ui.mjs')], { encoding: 'utf8' });
+  assert.equal(noCommand.status, 0, noCommand.stderr);
+  assert.match(noCommand.stdout, /agent-ui <command>/);
 });
 
 test('a package that is not installed, or an export that does not exist, fails with the fix in the message', async () => {
@@ -243,5 +283,38 @@ test('agent-ui serve, dev and check run from an installed copy', async () => {
     assert.equal(JSON.parse(readFileSync(join(project.root, 'out.schema.json'), 'utf8')).$schema.includes('2020-12'), true);
   } finally {
     project.cleanup();
+  }
+});
+
+// The artifact a user installs: npm pack writes the tarball from "files", and a project installs it the way a package manager does.
+test('the packed tarball installs into a project and builds with the agent-ui command', () => {
+  const packDirectory = mkdtempSync(join(tmpdir(), 'agent-ui-pack-'));
+  const project = mkdtempSync(join(tmpdir(), 'agent-ui-tarball-'));
+  try {
+    const packed = spawnSync('npm', ['pack', '--json', '--pack-destination', packDirectory], { cwd: repositoryRoot, encoding: 'utf8' });
+    assert.equal(packed.status, 0, packed.stderr);
+    const [info] = JSON.parse(packed.stdout);
+    const tarball = join(packDirectory, info.filename);
+    assert.ok(existsSync(tarball), `npm pack did not write ${tarball}`);
+    writeFileSync(join(project, 'package.json'), '{"name":"agent-ui-tarball-smoke","private":true,"type":"module"}');
+    const install = spawnSync('npm', ['install', '--no-audit', '--no-fund', tarball], { cwd: project, encoding: 'utf8' });
+    assert.equal(install.status, 0, install.stderr);
+    mkdirSync(join(project, 'pages'), { recursive: true });
+    writeFileSync(join(project, 'pages/page.js'), "export const page = { head: { title: 'Home' } };");
+    writeFileSync(join(project, 'pages/view.js'), "import { p } from '@ehtb/agent-ui/spec';\nexport const view = p({ id: 'home' }, 'home');");
+    writeFileSync(
+      join(project, 'build.config.mjs'),
+      "import { frameworkBuildOptions } from '@ehtb/agent-ui/build/presets.mjs';\nexport default ({ dev = false, validator } = {}) => ({ ...frameworkBuildOptions({ dev, validator }) });",
+    );
+    const tool = join(project, 'node_modules/@ehtb/agent-ui/bin/agent-ui.mjs');
+    const check = spawnSync(process.execPath, [tool, 'check'], { cwd: project, encoding: 'utf8' });
+    assert.equal(check.status, 0, check.stderr + check.stdout);
+    assert.match(check.stdout, /ok: 1 pages rendered and checked/);
+    const built = spawnSync(process.execPath, [tool, 'build'], { cwd: project, encoding: 'utf8' });
+    assert.equal(built.status, 0, built.stderr + built.stdout);
+    assert.ok(existsSync(join(project, 'dist/manifest.json')), 'the build wrote no manifest.json');
+  } finally {
+    rmSync(packDirectory, { recursive: true, force: true });
+    rmSync(project, { recursive: true, force: true });
   }
 });

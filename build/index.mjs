@@ -1,5 +1,5 @@
 // The build pipeline as a library: `import { build, loadConfig } from '@ehtb/agent-ui/build'`. Node only, never part of a page.
-// Each stage is also a module of its own (`@ehtb/agent-ui/build/<stage>.mjs`), so a script that only needs one imports only that.
+// The package exports this entry point and the stages `build`, `config`, `presets` and `prerender`; the other stages are internal modules of the repository.
 //
 //   loadConfig            read and check build.config.mjs, find the pages below pages/ and write their generated modules
 //   frameworkBuildOptions the runtime chunk, validator handling, minify and hash settings for both modes

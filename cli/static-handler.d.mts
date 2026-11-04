@@ -13,6 +13,8 @@ export interface StaticOptions {
   hosts?: readonly string[] | null;
   /** Called with errors the handler turns into a 500. Default `console.error`. */
   onError?: (error: unknown) => void;
+  /** Serves the site below this path, for example '/shop': a path outside it is not this site's (404, or `next()`). Default ''. */
+  basePath?: string;
 }
 export type StaticHandler = (request: IncomingMessage, response: ServerResponse, next?: (error?: unknown) => void) => Promise<void>;
 /** A request listener for a directory of built files. With `next`, requests it would answer 403, 404 or 405 go to `next()`. */

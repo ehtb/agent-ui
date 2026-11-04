@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install TypeScript (the package itself has no dependencies)
+        run: npm install --global typescript@5
+      - name: Test
+        run: npm test
+      - name: Type-check the declarations
+        run: npm run typecheck
+      - name: Check the spec schema is current
+        run: npm run schema && git diff --exit-code -- docs/spec.schema.json
+      - name: Check the package contents
+        run: npm pack --dry-run
+
+  browser:
+    name: real browser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+      - name: Check Chrome is available
+        run: node --input-type=module -e "import { findChrome } from './test/support/browser.mjs'; if (!findChrome()) { console.error('Chrome was not found'); process.exit(1); }"
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+      - name: Test, including the real-browser tests
+        run: npm test
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+
+  examples:
+    name: examples with dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install and test every example, including the ones with their own dependencies
+        run: node test/run-examples.mjs --all

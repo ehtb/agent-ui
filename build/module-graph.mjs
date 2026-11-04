@@ -2,7 +2,7 @@
 //
 // Result:
 //   projectRoot the real path every module path is relative to
-//   modules  Map(path -> parsed module)
+//   modules  Map(path -> parsed module), with `sourcePath` (the file read) and `packageName` (the npm package it is part of, or null)
 //   order    paths in an order where every module comes after the modules it imports (valid for all chunks)
 //   roots    the places execution can start: one per entry page, one per dynamic import() target
 //            [{ id, path, kind: 'entry' | 'dynamic' }]
@@ -25,6 +25,7 @@ export const buildModuleGraph = ({ projectRoot: givenRoot, entries, replacements
   // The project importing itself by its own name is not a package: those files are the project's own.
   const projectDirectory = realpathSync(projectRoot);
   const packagePaths = new Set();
+  const packageOfPath = new Map(); // module path -> the name of the npm package it belongs to (what assign-chunks.mjs splits by)
 
   const loadModule = (path) => {
     if (modules.has(path)) return modules.get(path);
@@ -36,7 +37,11 @@ export const buildModuleGraph = ({ projectRoot: givenRoot, entries, replacements
         if (!SUPPORTED_EXTENSIONS.includes(extname(resolved))) {
           throw new BuildError(`${path}: "${specifier}" resolves to ${resolved}, which is not a .js, .mjs or .css file. Import a .js, .mjs or .css file`);
         }
-        if (findPackageDirectory(splitSpecifier(specifier).packageName, dirname(absolutePath)) !== projectDirectory) packagePaths.add(resolved);
+        const { packageName } = splitSpecifier(specifier);
+        if (findPackageDirectory(packageName, dirname(absolutePath)) !== projectDirectory) {
+          packagePaths.add(resolved);
+          if (!packageOfPath.has(resolved)) packageOfPath.set(resolved, packageName);
+        }
         return resolved;
       }
       const importedPath = toPosixPath(relative(projectRoot, resolve(dirname(absolutePath), specifier)));
@@ -46,11 +51,14 @@ export const buildModuleGraph = ({ projectRoot: givenRoot, entries, replacements
       if (!existsSync(resolve(projectRoot, importedPath))) {
         throw new BuildError(`${path}: cannot find "${specifier}" (looked for ${importedPath}). Check the path, the extension and the spelling of the file name`);
       }
-      if (packagePaths.has(path)) packagePaths.add(importedPath);
+      if (packagePaths.has(path)) {
+        packagePaths.add(importedPath);
+        if (!packageOfPath.has(importedPath)) packageOfPath.set(importedPath, packageOfPath.get(path));
+      }
       return importedPath;
     };
     const sourcePath = replacements[path] ?? path; // the file whose text is used: a replaced module is read from its replacement
-    const record = { ...parseModule({ path, sourceText: readFileSync(resolve(projectRoot, sourcePath), 'utf8'), resolveImport, inPackage: packagePaths.has(path) }), sourcePath };
+    const record = { ...parseModule({ path, sourceText: readFileSync(resolve(projectRoot, sourcePath), 'utf8'), resolveImport, inPackage: packagePaths.has(path) }), sourcePath, packageName: packageOfPath.get(path) ?? null };
     modules.set(path, record);
     return record;
   };

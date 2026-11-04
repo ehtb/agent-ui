@@ -28,7 +28,7 @@ Source is written in plain English names and is never minified by us. Minificati
 
 ## 3. Evidence (what exists today)
 
-**Build pipeline** (`build/`, no dependencies). The runtime is its own chunk, each page has its own entry chunk and CSS file, a lazy `devtools` chunk loads only for an app made with `debug: true`, and shared code lands in `shared-*` chunks. Tests cover the chunking rules, cache behaviour (changing app code leaves the runtime file name unchanged), readable output, running built chunks including a lazy chunk and its injected CSS, a catalogue of unsupported-syntax errors, and the development and production presets.
+**Build pipeline** (`build/`, no dependencies). The runtime is its own chunk, each page has its own entry chunk and CSS file, a lazy `devtools` chunk loads only for an app made with `debug: true`, and shared code is split by owner: the app's in `shared-*` chunks, the rest of the framework in `agent-ui-*` chunks, each npm package in `vendor-*` chunks. Tests cover the chunking rules, cache behaviour (changing app code leaves the runtime, framework and package file names unchanged), readable output, running built chunks including a lazy chunk and its injected CSS, a catalogue of unsupported-syntax errors, and the development and production presets.
 
 **Tests.** Everything runs headless with `npm test`: the framework tests in `test/` and the example apps in `examples/`, which add conformance and end-to-end tests from the outside (`examples/README.md`). A mutation sanity check caught 11 of 11 deliberate runtime bugs.
 
@@ -36,7 +36,7 @@ Source is written in plain English names and is never minified by us. Minificati
 
 | Build | Runtime chunk | Validator chunk |
 |---|---|---|
-| Production | 46.4 KB raw, 12.7 KB gzip | omitted |
+| Production | 46.3 KB raw, 12.6 KB gzip | omitted |
 | Development | 149.2 KB raw, 43.9 KB gzip | 74.1 KB raw, 21.6 KB gzip |
 
 In development the runtime chunk holds all of the framework's own modules (`src/**`), so that the hot swap of a page never evaluates `src/pages.js` twice; those modules used to sit in each page's chunk, so what a development page downloads is the same (227 KB for `examples/basic` when it was measured, 4 KB of it the page). The runtime size sentence is measured with `agent-ui build` on `test/fixtures/shell-site`; `test/docs.test.mjs` fails when the sentence in the README drifts more than 1 KB from a real build. The production runtime grew by about 2 KB raw (0.5 KB gzip) with the fixes of the review that followed (derived values are recomputed before anything reads them, a loop between them is found when it forms, a replay plays no transitions and no events; it was 44.0 KB raw, 12.1 KB gzip), by about 1.5 KB raw (0.3 KB gzip) when `destroy()` and the `soft` attribute were added for soft navigation (it was 34.2 KB raw, 9.7 KB gzip), and by about 4 KB raw (1 KB gzip) when `rowState`, `as` / `row` and the element observers were added (it was 35.7 KB raw, 10.0 KB gzip). Of that, the message text of the checks and of the runtime's errors is not in it (`src/runtime-checks.js` and `src/error-messages.js` are stubs in production, and an error there is a code and its details), and `mountElement` is not in it either: it is a module only the plugins that import it carry. Error codes with `onError` / `report`, the `debug` option and the console is turned on by `debug: true` only (a cookie used to do it) and added about 1.5 KB raw (0.4 KB gzip) in total (it was 41.2 KB raw, 11.4 KB gzip), and the fixes of the review that followed (empty option values, rows that leave with a transition, `watch` after a rolled back action, radios) a little more, to the figure in the table. The development chunks also carry the comments of the source. The build report lists every chunk, so re-measure after a change. A page loads only the plugins it imports. A real minifier through the `transform` hook is expected to shrink it further; this is not measured because none is installed in this environment.
@@ -133,13 +133,13 @@ Data is already declared through `resources`, and how a page is delivered follow
 
 A page also says when it is `ready`, so the render server waits for it and the HTML is finished. It says what to show while it is not, through `pending`, which is plain spec data that the validator checks like everything else. And it says which `status` it answers. That is one declaration next to the page, instead of an app-wide `until` and a status function in the build config that name routes by hand. Loading is state, and `ready` is a function of state. There are no boundaries, no thrown promises and no streaming. Layouts are plain functions that pages import, so pages can differ completely, and pages that import the same layout share one copy of it in the build.
 
-A page names the plugins it needs (`plugins: [withResources]`) and the namespaces it uses, so the build can give it exactly the code it imports: the cost of a page is what it lists. Small shared chunks are folded together (`minSharedChunkBytes`), because grouping by the exact set of pages would make one file per combination of pages.
+A page names the plugins it needs (`plugins: [withResources]`) and the namespaces it uses, so the build can give it exactly the code it imports: the cost of a page is what it lists. Within a set of pages, code is also split by owner (the framework, each npm package, the app), because they change at different times: the framework and a package on an upgrade, the app on every deploy. One file holding both would be downloaded again for either; in the shop a one-line change to the cart costs a returning visitor 1.1 KB instead of about 11 KB (esbuild + gzip), for one request more on the first visit. Small chunks are folded together (`minSharedChunkBytes`), because grouping by the exact set of pages would make one file per combination of pages; a fold goes into a chunk of the same owner or the app's, never into the framework's or a package's, so the split that caching depends on survives it.
 
 Per-page APIs are tables such as `'POST /:id/signup'`, mounted below `/api/<name>/`, so one table cannot answer for another, and a missing or misspelled endpoint is a 404 in a test, not a silent fallthrough. Third-party tags for analytics or marketing are not a framework feature.
 
 `agent-ui check` reads the links in every spec: a literal `href` that is no page, no file in `publicDir` and no API path is reported with a suggestion. With a link as a plain path and a page as a folder, "this link leads nowhere" is a fact the tooling can know.
 
-Costs: a page load between pages (no in-memory state across them, the header is mounted again), the site is served from the root of its domain (there is no base path), and the pages that share a namespace each list it. A namespace that reads another one needs that one listed too; the page fails at start with the name of the missing one.
+Costs: a page load between pages (no in-memory state across them, the header is mounted again), a site below a path of its domain says so once (`basePath`, added on the wire by the build, the runtime and the servers, so a spec, a folder and the API keep the site's own paths), and the pages that share a namespace each list it. A namespace that reads another one needs that one listed too; the page fails at start with the name of the missing one.
 
 ## 5. What it is judged on
 
@@ -216,19 +216,34 @@ Decision rule: if agent-ui wins on regressions and iterations but loses on first
 
 **What it costs.** About 1.4 KB more in the runtime that every page downloads (`destroy`, the nested-app guards, the `soft` attribute; 0.3 KB gzipped) and about 0.3 KB in `src/pages.js`; the shell, the navigation plugin and `syncApps` are downloaded only by pages that list a shell (`examples/shop/README.md` has the numbers). A page without a shell pays nothing else, and keeps the route namespace it always had.
 
-**What it does not do.** Prefetch the next page, restore the scroll position on back and forward, animate between pages, or keep a page's state across a swap. A page with a form half filled loses it, as on a load; what must survive lives in the shell or on the server. A shell that is wanted on some pages and not others is two shells; a soft link between them is a normal load.
+**What it does not do.** Prefetch the next page, restore scroll positions inside scrolling containers, animate between pages, or keep a page's state across a swap. A page with a form half filled loses it, as on a load; what must survive lives in the shell or on the server. A shell that is wanted on some pages and not others is two shells; a soft link between them is a normal load.
 
 ## 7. Roadmap (by expected value)
 
 1. More real-browser verification, and the official TodoMVC browser run. `@ehtb/agent-ui/testing/browser.mjs` is in place and two tests use it (soft navigation in `examples/shop`, a shim-against-Chrome session in `examples/todomvc`). Still to run in a browser: focus and typed-input restore after hydration, transitions and hot reload, the pointer drag of `examples/react-converted-components`, and the same session comparison for more apps.
 2. Validate `{item: field}` against the shape of the iterated list where it is statically known, and name the missing field at runtime otherwise. Shorter validator paths using the nearest explicit ids.
 3. A `reload` option for `resources` instead of the counter-in-state workaround.
-4. Streaming and multi-URL prerender with one output file per route; error pages for the render server.
+4. Streaming render. (Multi-URL prerender is built: a page with parameters lists its URLs in `paths`, which `--static` writes and `agent-ui check` renders.) Error pages stay the host's.
 5. A build-time CSS report: classes used by specs but undefined, selectors defined in more than one chunk.
 6. Form schemas that reuse action argument types; a text rendering of the spec tree for review.
 7. List virtualization, and more operators, only if row counts or derive workarounds demand them. (Row-sourced nested `each` is built: `as` and `row`.)
 8. Expose `actions()` and `tree()` to external agents over a standard protocol.
-9. Build: a full bundler if the restricted module dialect becomes a constraint. (Source maps are built: line-level, `BUILD.md`; errors in the dialect name the line.)
+9. Build: a full bundler if the restricted module dialect becomes a constraint. (Source maps are built: line-level, `BUILD.md`, and with a minifier in `transform` the minifier returns its own map, which the build follows back to the source; errors in the dialect name the line.)
+
+## Release review (October 2026)
+
+A review against an open-source release, with the line that the framework is a UI library with server rendering and not an application server, added what a host cannot supply itself and nothing it can:
+
+- **Base path** (`basePath`): the site's own paths everywhere inside the app and the API, the base only on the wire. A host cannot fix root-absolute asset URLs and page patterns from outside without rewriting responses.
+- **`paths` in view.js**: one list of URLs for a page with parameters, used by both `agent-ui check` and `--static`, so a checked page is a page that can be generated. view.js runs only in Node, so the list may come from data.
+- **A closed SVG subset**: inline icons are in almost every UI, and `img` and `mountElement` were the only ways out. The subset is for icons and simple drawings with placement and labelling rules the validator checks; charts stay with a library drawn by a plugin.
+- **Cost as counts, not times**: `measureAction`/`assertCost` (DOM writes, effect runs, values changed), the page table of `agent-ui check` and the build, and `budgets`. Counts are the same on every machine, so an agent can assert them; wall time is noisy and was left out. The effect counter is a few bytes in the runtime; the rest lives in the testing helpers and the tools.
+- **Scroll restoration** of the window on back and forward, which only the navigation plugin can do (it swaps the page after the browser would have scrolled).
+- `createSsrHandler` answers 413 for a body over its limit and 415 for a compressed one, and is described as a request adapter with an opt-in API and form bridge. Uploads, sessions, SSE, WebSockets, compression and caching stay the host's (`SECURITY.md`).
+
+`follow` and the sliding of reordered rows moved out of the runtime into the plugins `withFollow` and `withMoves`, behind two hooks (`api.onReorder`, `api.handleProperty`): only pages that drag or slide download them. The saving is small (0.7 KB raw, 0.26 KB gzip, every other page), so the price had to be small too: a page that uses `follow` without its plugin fails at mount naming the import, rows that would have slid jump with a development warning naming it, and `agent-ui explain plugins` lists every plugin. The enter and leave markers stayed in the runtime, because they decide when a node leaves the DOM.
+
+`syncApps` was kept after asking whether the shell made it redundant: the shell's `reads` are built on it, and two apps on a page the host owns (`examples/islands`) is the library use it exists for.
 
 ## Deliberate tightenings (October 2026 drift review)
 

@@ -36,7 +36,7 @@ const checkPagePath = (path) => {
 
 // What view.js may export. The generated modules read these names off the module, so a misspelt export would be
 // dropped without a word; this turns it into an error with the nearest valid name.
-export const VIEW_EXPORTS = ['view', 'layout', 'pending', 'shell'];
+export const VIEW_EXPORTS = ['view', 'layout', 'pending', 'shell', 'paths'];
 export const checkViewExports = (viewModule, file) => {
   for (const name of Object.keys(viewModule)) {
     if (!VIEW_EXPORTS.includes(name)) fail(file, `unknown export "${name}"`, `${didYouMean(name, VIEW_EXPORTS)}Export only ${VIEW_EXPORTS.join(', ')} from view.js; anything else belongs in page.js or in a module you import`);

@@ -46,7 +46,7 @@ Styles: `pages/<url>/page.css` is that page's CSS; `pages/style.css` is every pa
 
 Keep `window` and `fetch` injectable where you write a helper, so tests run headless.
 
-**Server state, headers and a session.** A page renders from its own state. The render server (`createSsrHandler`) reads the request once and gives it to `api.handle`, `api.handleForm`, `initialStateFor`, `transformResponse` and `fetchFunction(url, init, request)`; `initialStateFor(request)` returns public state the page starts from, and `transformResponse(request, { status, headers, body })` returns `{ headers?, body? }` to add response headers or rewrite the body (for example a CSP nonce). The framework has no session store, login flow, authorization or CSP policy: keep a session token in an `HttpOnly` cookie set by the API or a form, put only public data in `initialStateFor`, and check the cookie or CSRF token in the handler that changes state. A page cannot set response headers; API and form outcomes and `transformResponse` can set a cookie. The host sends `vary: cookie` or `cache-control: private` from `transformResponse` for a page whose state depends on the visitor; `no-cache` alone does not separate visitors in a shared cache. See `GUIDE.md`, "A session, a CSP and response headers".
+**Server state, headers and a session.** A page renders from its own state. The render server (`createSsrHandler`) reads the request once and gives it to `api.handle`, `api.handleForm`, `initialStateFor`, `stateForBrowser`, `transformResponse` and `fetchFunction(url, init, request)`; `initialStateFor(request)` returns public state the page starts from, `stateForBrowser(state, request)` chooses what the document's state script carries (a key only the server reads is left out), and `transformResponse(request, { status, headers, body })` returns `{ headers?, body? }` to add response headers or rewrite the body (for example a CSP nonce). The framework has no session store, login flow, authorization or CSP policy: keep a session token in an `HttpOnly` cookie set by the API or a form, put only public data in `initialStateFor`, and check the cookie or CSRF token in the handler that changes state. A page cannot set response headers; API and form outcomes and `transformResponse` can set a cookie. The host sends `vary: cookie` or `cache-control: private` from `transformResponse` for a page whose state depends on the visitor; `no-cache` alone does not separate visitors in a shared cache. See `GUIDE.md`, "A session, a CSP and response headers".
 
 ## 4. State and actions
 
@@ -97,7 +97,7 @@ div({ id: 'todos' },
 - `when(condition, children, otherwise)` renders only one branch.
 - A handler is `act('namespace.verb', args)`; a list runs in order, each logged. Keys are `'keydown.Enter'` and `'keydown.Control+Shift+k'`; options are `{ preventDefault, stopPropagation }`.
 - Inputs, selects and textareas need `aria-label`; images need `alt`; buttons and links need text or a label; no `javascript:` URL is allowed. The validator checks these at mount.
-- Dragging is pointer events calling actions. There is no `dragstart`, `drop` or `dataTransfer`; copy recipe `drag-reorder`, including its keyboard path and Escape.
+- Dragging is pointer events calling actions. There is no `dragstart`, `drop` or `dataTransfer`; copy recipe `drag-reorder`, including its keyboard path and Escape. The `follow` prop needs the plugin `withFollow` (`@ehtb/agent-ui/follow`), and rows with `transition` slide to a new place only with `withMoves` (`@ehtb/agent-ui/moves`).
 - A link is a page load. `a({ href: '/about', soft: true }, 'About')` makes it faster inside a shell, and `route.go` does the same from a button; it only works when the target page has the same shell. A swap focuses the page region named by the new title; put `domId: 'agent-ui-announcer'` and `aria-live: 'polite'` on a live region in the shell if the site should also announce it politely.
 - A dialog is a native `dialog` plus explicit open state; copy recipe `modal` for the focus trap, focus restore and `inert` background. The framework has no modal component.
 
@@ -122,7 +122,18 @@ The lifecycle actions are the only writers of the owned keys, and the response i
 
 A page rendered on the server already holds its resources' output. By default the browser loads it again on mount; add `revalidate: 'never'` (with `owns`) when that output is complete and fresh enough for the first paint, so the first mount trusts the document and a later watched change still loads. Do not combine it with `onTimeout: 'serve'`, whose state may be partial.
 
-Everything else external is a plugin:
+Everything else external is a plugin. The ones the package ships (`agent-ui explain plugins` prints this with the details):
+
+| A page lists | From | When |
+|---|---|---|
+| `withResources` | `@ehtb/agent-ui/resources` | a namespace declares `resources` |
+| `({ win }) => windowEvents(win, { ... })` | `@ehtb/agent-ui/window-events` | an action answers a window or document event |
+| `withHead` | `@ehtb/agent-ui/head` | `head` is a function of the state |
+| `withFollow` | `@ehtb/agent-ui/follow` | the spec uses `follow` |
+| `withMoves` | `@ehtb/agent-ui/moves` | rows with `transition` should slide when the list reorders |
+| `withNavigation` (a shell lists it) | `@ehtb/agent-ui/navigation` | `soft` links and `route.go` between the shell's pages |
+
+A plugin you write:
 
 - It is `(environment) => (api) => void`, reads with `api.watch(keys, callback)` and writes with `api.dispatch(name, args)`.
 - It checks `api.replaying` before it acts, and registers `api.onReplay` to drop a request or timer in flight.
@@ -167,12 +178,13 @@ assertNoErrors(ui);
 - No client-side router. Following a link is a page load; `soft: true` inside a shell makes it faster.
 - No browser storage. Durable state lives on the server and is loaded with `resources`.
 - No component-local state; per-row state is `rowState`. No scoped CSS.
-- No virtualization, undo/redo, streaming SSR or partial hydration.
+- No virtualization, undo/redo, streaming SSR or partial hydration. A long list is a page of the data at a time; `budgets.listRows` holds a page to it.
 - No modal/popover component with a focus trap (copy recipe `modal`), no file-upload parser or `multipart` body, and no SSE or WebSocket endpoint. Receive uploads and long-lived connections in the host server.
 - No built-in internationalization, locale-aware URLs or right-to-left layout. Text and `dir` are ordinary state and attributes; the project owns the catalogue.
-- No scroll restoration on back/forward, and no base path below `/`.
+- No scroll restoration inside scrolling containers (the window's position is restored on back and forward). A site below a path is `basePath` in `build.config.mjs`; write every URL of the site as if it were at the root.
+- No SVG beyond icons and simple drawings: `svg`, `g`, `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, `polygon`, `use`. A chart is a library drawn by a plugin (recipe `draw-into-element`), no canvas or media tags.
 - No TypeScript compile step. The package ships hand-written `.d.ts` files, so `// @ts-check` gives editor checking without a build; `examples/with-typescript` is a checked app.
-- No session store, auth flow or CSP policy. The render server passes the request to `initialStateFor` and `transformResponse`; keep the session token in an `HttpOnly` cookie set by the API or a form, and write the policy in your server.
+- No session store, auth flow or CSP policy. The render server passes the request to `initialStateFor`, `stateForBrowser` and `transformResponse`; keep the session token in an `HttpOnly` cookie set by the API or a form, and write the policy in your server.
 
 ## 10. Work on the framework itself
 
@@ -188,8 +200,9 @@ Before you write or change a page, read `node_modules/{package}/docs/AGENT-RULES
 - Give an explicit, unique `id` to anything a test or another agent addresses.
 - A page cannot set response headers. The render server's `initialStateFor`, `stateForBrowser` and `transformResponse` hooks supply public session state, choose what the state script carries, and set response headers or a body rewrite. Keep a session token in an `HttpOnly` cookie set by the API or a form, never in state; the framework has no session store or CSP policy of its own. A page whose state depends on `initialStateFor` gets `vary: cookie` or `cache-control: private` from `transformResponse`.
 - A page rendered on the server already holds its resources' output. Add `revalidate: 'never'` with `owns` when the browser should trust it instead of loading it again on mount.
-- Run `agent-ui check` before you finish and fix every line it prints. In tests, call `assertNoErrors(ui)` after `await ui.settle()` and after the step that opens a branch.
+- Run `agent-ui check` before you finish and fix every line it prints. A page with parameters is rendered only at the URLs its `view.js` lists in `export const paths = [...]`. In tests, call `assertNoErrors(ui)` after `await ui.settle()` and after the step that opens a branch; on a list, `assertCost(ui, action, args, { effectRuns, domWrites })` keeps a change of one row from running every row.
 - Dragging a row is pointer events calling actions; there is no drag-and-drop API (`dragstart`, `drop`, `dataTransfer`). Copy recipe `drag-reorder` (`agent-ui explain drag-reorder`), including its keyboard path and Escape.
+- Plugins are separate imports a page lists in `plugins` (`withResources`, `withHead`, `withFollow` for `follow`, `withMoves` for sliding rows, ...): `agent-ui explain plugins` lists each one and when it is needed.
 - A dialog is a native `dialog` plus explicit open state; copy recipe `modal` for the focus trap, focus restore and `inert` background. A soft link focuses the page region named by the new title; put `domId: 'agent-ui-announcer'` and `aria-live: 'polite'` on a live region in the shell for a polite announcement too.
 - The server runs the plugins of a page too, against a stand-in window. A plugin with a timer, a window listener, a request or a browser-only library starts with `if (isServerRendering) return;` (a field of the plugin's environment); copy recipe `browser-only-plugin`.
 - Never edit `dist/`; change the source and rebuild.

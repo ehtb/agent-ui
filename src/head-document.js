@@ -31,8 +31,8 @@ const textOf = (node, attributes, state, where) => {
 const withText = (resolved, nodes, state, where) => resolved.map((entry, index) => ({ ...entry, text: textOf(nodes[index], entry.attributes, state, `${where}[${index}]`) }));
 
 // The description of the document for one state, as the server writes it.
-export const describeDocument = (head, state, where) => {
-  const description = resolveHead(head, state, where);
+export const describeDocument = (head, state, where, basePath = '') => {
+  const description = resolveHead(head, state, where, basePath);
   return {
     ...description,
     tags: withText(description.tags, head.tags ?? [], state, `${where}.tags`),

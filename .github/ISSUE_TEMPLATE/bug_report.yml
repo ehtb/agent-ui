@@ -1,0 +1,65 @@
+name: Bug report
+description: Something does not work as documented
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. A minimal reproduction is the fastest path to a fix. Do not include secrets or private data.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: The smallest `page.js` / `view.js` / `build.config.mjs` that shows the problem, or a repository link.
+      render: javascript
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: agent-ui version
+      description: "`npm ls @ehtb/agent-ui`, or the version in `node_modules/@ehtb/agent-ui/package.json`."
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      placeholder: "22.20.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "macOS 15, Ubuntu 24.04, ..."
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser (if the bug is in the browser)
+      placeholder: "Chrome 140, Firefox 142, Safari 18, ..."
+  - type: textarea
+    id: output
+    attributes:
+      label: Error output
+      description: The output of `agent-ui check`, the build, or the browser console. Include the error code (`AUI` + four digits) when there is one.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and the documentation.
+          required: true
+        - label: I removed secrets, tokens and private data from this report.
+          required: true

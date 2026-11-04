@@ -15,7 +15,7 @@ const { a, button, div, footer, header, input, main, p, pageSlot, section, span,
 
 // ---------------------------------------------------------------------------------------------------- a fake browser
 
-const listeners = { click: [], popstate: [] };
+const listeners = { click: [], popstate: [], pagehide: [], pageshow: [] };
 const head = new ShimElement('head');
 const body = new ShimElement('body');
 shimDocument.head = head;
@@ -38,7 +38,21 @@ const fetched = [];
 globalThis.window = {
   location,
   document: shimDocument,
-  history: { pushState: (state, title, href) => (history.push(href), setLocation(href)) },
+  // One entry's state at a time: a test that goes back sets the state of the entry it returns to.
+  history: {
+    state: null,
+    scrollRestoration: 'auto',
+    pushState(state, title, href) {
+      history.push(href);
+      this.state = state;
+      setLocation(href);
+    },
+    replaceState(state) {
+      this.state = state;
+    },
+  },
+  scrollX: 0,
+  scrollY: 0,
   addEventListener: (type, listener) => listeners[type]?.push(listener),
   removeEventListener: (type, listener) => (listeners[type] = listeners[type].filter((registered) => registered !== listener)),
   fetch: (url, init) => (fetched.push(url), answer(url, init)),
@@ -300,6 +314,7 @@ test('navigate refuses an unsafe URL, sends another origin to a normal page load
 test('back does the same swap for the address the browser returns to, without adding a history entry', async () => {
   const pushed = history.length;
   setLocation('/'); // the browser moved back
+  window.history.state = null; // an entry the plugin never saw has no position: the window goes to the top
   const before = currentPage();
   for (const listener of [...listeners.popstate]) listener({ type: 'popstate' });
   await until(() => currentPage().ui !== before.ui, 'the page for "/"');
@@ -308,6 +323,50 @@ test('back does the same swap for the address the browser returns to, without ad
   for (const listener of [...listeners.popstate]) listener({ type: 'popstate' }); // the same address again (a hash change): nothing to do
   await sleep(10);
   assert.equal(currentPage().ui.destroyed, false);
+});
+
+test('back and forward return to where the visitor was on that entry; a new entry starts at the top', async () => {
+  assert.equal(window.history.scrollRestoration, 'manual', 'the browser does not scroll before the new page exists');
+  answer = async (url) => htmlResponse(documents[url]);
+  // On "/" the visitor scrolled to 300, then followed a link: the new entry starts at the top.
+  const firstEntry = window.history.state;
+  assert.ok(firstEntry.agentUiEntry, 'an entry the plugin arrived on without a key was given one');
+  window.scrollY = 300;
+  const start = currentPage();
+  click(byDataId('to-b'));
+  await until(() => currentPage().ui !== start.ui, 'the page for "/b"');
+  assert.deepEqual(scrolls.at(-1), [0, 0]);
+  assert.notEqual(window.history.state.agentUiEntry, firstEntry.agentUiEntry, 'the new page has an entry of its own');
+  // On "/b" the visitor scrolled to 120 and went back: the window returns to 300.
+  const secondEntry = window.history.state;
+  window.scrollY = 120;
+  const before = currentPage();
+  setLocation('/');
+  window.history.state = { agentUiEntry: firstEntry.agentUiEntry };
+  for (const listener of [...listeners.popstate]) listener({ type: 'popstate' });
+  await until(() => currentPage().ui !== before.ui, 'the page for "/"');
+  assert.deepEqual(scrolls.at(-1), [0, 300]);
+  // Forward again: the window returns to 120 on "/b".
+  const back = currentPage();
+  setLocation('/b');
+  window.history.state = secondEntry;
+  for (const listener of [...listeners.popstate]) listener({ type: 'popstate' });
+  await until(() => currentPage().ui !== back.ui, 'the page for "/b"');
+  assert.deepEqual(scrolls.at(-1), [0, 120]);
+  // Leaving the document writes the position into its entry, for a reload or a return from another site.
+  window.scrollY = 45;
+  for (const listener of [...listeners.pagehide]) listener({ type: 'pagehide' });
+  assert.deepEqual(window.history.state.agentUiScroll, { x: 0, y: 45 });
+  assert.equal(window.history.state.agentUiEntry, secondEntry.agentUiEntry, 'the entry keeps its key');
+  // The back/forward cache brings the document back: the plugin does not start again, pageshow restores the position.
+  window.history.state = { ...window.history.state, site: 'kept' };
+  for (const listener of [...listeners.pagehide]) listener({ type: 'pagehide' });
+  assert.equal(window.history.state.site, 'kept', 'what the site keeps in the entry stays beside the plugin\'s keys');
+  window.scrollY = 0;
+  for (const listener of [...listeners.pageshow]) listener({ type: 'pageshow', persisted: false });
+  const scrollsBefore = scrolls.length;
+  for (const listener of [...listeners.pageshow]) listener({ type: 'pageshow', persisted: true });
+  assert.deepEqual(scrolls.slice(scrollsBefore), [[0, 45]], 'only a page restored from the cache is scrolled back');
 });
 
 test('destroying the shell removes the listeners of the navigation plugin, and a navigation still waiting changes nothing when it ends', async () => {

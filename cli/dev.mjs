@@ -104,9 +104,9 @@ export const startDev = async ({ root = projectRoot, port = 8080, host = '127.0.
   };
   await rebuild();
   if (!built) throw new Error('agent-ui dev: the first build failed, so there is no site to serve. Fix the error above and start it again.');
-  server = createStaticServer(resolve(root, config.outDir), { intercept: hotReload.intercept, transformHtml: hotReload.transformHtml, assetsDir: config.assetsDir ?? 'assets', rewrites: () => pages.map((page) => ({ pattern: page.path, page: `${page.name}.html` })), hosts: hostsFor(host) });
+  server = createStaticServer(resolve(root, config.outDir), { intercept: hotReload.intercept, transformHtml: hotReload.transformHtml, assetsDir: config.assetsDir ?? 'assets', rewrites: () => pages.map((page) => ({ pattern: page.path, page: `${page.name}.html` })), hosts: hostsFor(host), basePath: config.basePath ?? '' });
   await new Promise((resolveListening) => server.listen(port, host, resolveListening));
-  log(`dev server at http://${host}:${server.address().port}/ (hot reload on)`);
+  log(`dev server at http://${host}:${server.address().port}${config.basePath ?? ''}/ (hot reload on)`);
   return { server, rebuild, stop: () => { watchers.forEach((watcher) => watcher.close()); clearTimeout(timer); hotReload.close(); server.closeAllConnections?.(); server.close(); } };
 };
 

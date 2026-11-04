@@ -233,6 +233,8 @@ export class DomElement extends DomNode {
 export const createServerDocument = (ElementClass = DomElement) => {
   const document = {
     createElement: (tagName) => new ElementClass(tagName, document),
+    // Markup has no namespaces to write: an HTML parser puts <svg> and what it holds in the SVG namespace by itself.
+    createElementNS: (namespace, tagName) => new ElementClass(tagName, document),
     createTextNode: (data) => new DomText(data),
     createComment: (data) => new DomComment(data),
     createDocumentFragment: () => new DomFragment(),

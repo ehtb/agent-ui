@@ -1,10 +1,10 @@
 // Static validation of specs, and the machine-readable `grammar`. Runs once at mount and reports every problem as
 // "specPath: problem". Production builds may leave this module out (`validator: 'omit'`); dev builds and tests keep it.
 import { didYouMean } from './messages.js';
-import { BINDING_KEYS, DELEGATED_EVENTS, URL_PROPS, describeValue, isBinding, isPlainObject, toArray, matchesArgumentType, isUnsafeUrl, splitRowPath } from './spec-core.js';
+import { BINDING_KEYS, DELEGATED_EVENTS, SVG_TAGS, URL_PROPS, describeValue, isBinding, isPlainObject, toArray, matchesArgumentType, isUnsafeUrl, splitRowPath } from './spec-core.js';
 import { describeUnknownKey } from './error-messages.js';
 import { checkArgumentNames, checkHandlerParts, checkKeyChord, checkUnknownKeys as describeUnknownKeys } from './handler-checks.js';
-import { ATTRIBUTES, ATTRIBUTE_PREFIXES, isPrefixedAttribute, isReservedAttribute, ALLOWED_TAGS, ARGUMENT_TYPES, EACH_KEYS, ELEMENT_KEYS, LABELLED_TAGS, OPERAND_COUNTS, VOID_TAGS, WHEN_KEYS, grammar } from './grammar.js';
+import { ATTRIBUTES, ATTRIBUTE_PREFIXES, isPrefixedAttribute, isReservedAttribute, ALLOWED_TAGS, ARGUMENT_TYPES, EACH_KEYS, ELEMENT_KEYS, LABELLED_TAGS, OPERAND_COUNTS, SVG_ATTRIBUTES, VOID_TAGS, WHEN_KEYS, grammar } from './grammar.js';
 import { ACTION_KEYS, IDENTIFIER, NAMESPACE_KEYS, ROW_STATE_KEY, SHAPE_KEYS, declaredStateKeys, flattenNamespaces, splitStatePath } from './namespaces.js';
 
 // ---------------------------------------------------------------------------
@@ -14,6 +14,8 @@ import { ACTION_KEYS, IDENTIFIER, NAMESPACE_KEYS, ROW_STATE_KEY, SHAPE_KEYS, dec
 const ALLOWED_TAGS_SET = new Set(ALLOWED_TAGS);
 const VOID_TAGS_SET = new Set(VOID_TAGS);
 const LABELLED_TAGS_SET = new Set(LABELLED_TAGS);
+const SVG_ATTRIBUTES_SET = new Set(SVG_ATTRIBUTES);
+const SVG_CONTENT = SVG_TAGS.filter((tag) => tag !== 'svg');
 
 export { grammar };
 
@@ -444,6 +446,17 @@ export const validate = (spec, context = {}) => {
       problems.push(`${specPath}: ${node.tag} needs text or aria-label`);
     }
     if (node.tag === 'img' && !('alt' in props)) problems.push(`${specPath}: img needs alt (use "" for decorative images)`);
+    if (node.tag === 'svg') {
+      const hidden = props['aria-hidden'] === 'true' || props['aria-hidden'] === true;
+      // A label alone does not make an svg an image to assistive technology: role 'img' does, and the label is its name.
+      if (hasLabel && !hidden && props.role !== 'img') problems.push(`${specPath}: svg has aria-label but not role: 'img'. Write role: 'img' with the label, so assistive technology reads the drawing as one image with that name`);
+      else if (!hasLabel && !hidden) problems.push(`${specPath}: svg needs aria-label with role: 'img' (a drawing that says something) or 'aria-hidden': 'true' (a decorative icon next to text that says it)`);
+    }
+    if (!SVG_TAGS.includes(node.tag)) {
+      for (const name of Object.keys(props)) {
+        if (SVG_ATTRIBUTES_SET.has(name)) problems.push(`${specPath}.props.${name}: ${name} is an attribute of an svg drawing, and this is a ${node.tag}. Put it on the svg or one of its shapes, or style the ${node.tag} with CSS`);
+      }
+    }
     if (VOID_TAGS_SET.has(node.tag) && hasContent) problems.push(`${specPath}: ${node.tag} cannot have children`);
     toArray(node.children).forEach((child, index) => checkNode(child, `${specPath}.${index}`, insideEach));
   };
@@ -494,6 +507,27 @@ export const validate = (spec, context = {}) => {
     problems.push(`${specPath}: bad node (expected tag, each, when or a binding, got keys ${Object.keys(node).join(', ') || 'none'})`);
   };
 
+  // SVG: its content tags stand only inside an svg, and an svg holds only them (src/grammar.js), because the browser draws nothing
+  // else there. A walk of its own carries "inside an svg" through elements, each templates and when branches.
+  const checkSvgPlacement = (node, specPath, insideSvg) => {
+    if (typeof node === 'string' || isBinding(node)) {
+      if (insideSvg) problems.push(`${specPath}: an svg holds no text. Put the text next to the svg, or say it with aria-label on the svg`);
+      return;
+    }
+    if (!isPlainObject(node)) return;
+    if ('when' in node) {
+      toArray(node.children).forEach((child, index) => checkSvgPlacement(child, `${specPath}.when.${index}`, insideSvg));
+      toArray(node.otherwise).forEach((child, index) => checkSvgPlacement(child, `${specPath}.otherwise.${index}`, insideSvg));
+      return;
+    }
+    if ('each' in node) return isPlainObject(node.template) && checkSvgPlacement(node.template, `${specPath}.each`, insideSvg);
+    if (typeof node.tag !== 'string') return;
+    if (insideSvg && !SVG_TAGS.includes(node.tag)) problems.push(`${specPath}: an svg holds only ${SVG_CONTENT.join(', ')}, not ${node.tag}. Put the ${node.tag} next to the svg`);
+    if (!insideSvg && SVG_CONTENT.includes(node.tag)) problems.push(`${specPath}: ${node.tag} is drawn inside an svg. Put it in svg({ viewBox: '0 0 24 24', 'aria-hidden': 'true' }, ...)`);
+    toArray(node.children).forEach((child, index) => checkSvgPlacement(child, `${specPath}.${index}`, insideSvg || node.tag === 'svg'));
+  };
+
   checkNode(spec, '$', false);
+  checkSvgPlacement(spec, '$', false);
   return problems;
 };

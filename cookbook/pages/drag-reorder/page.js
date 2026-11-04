@@ -1,8 +1,12 @@
+import { withFollow } from '@ehtb/agent-ui/follow';
+import { withMoves } from '@ehtb/agent-ui/moves';
+
 // Recipe: a list reordered by dragging a row, or from the keyboard.
 // There is no drag-and-drop API here (no dragstart, drop or dataTransfer): the gesture is the bubbling pointer events the grammar has,
 // and every step is a logged action, so a drag replays like anything else. Pressing a grip picks the row up (`press`), moving over another
 // row puts the picked-up one in its place (`over`), releasing ends the drag (`release`). The pointer's coordinates are not state:
-// `follow` (see view.js) makes the runtime keep the picked-up row under the pointer. A touch pointer is captured by the grip, so
+// `follow` (see view.js) keeps the picked-up row under the pointer, and `transition` slides the other rows aside: both are plugins the
+// page lists, `withFollow` (@ehtb/agent-ui/follow) and `withMoves` (@ehtb/agent-ui/moves). A touch pointer is captured by the grip, so
 // `over` never fires for it: the keyboard (Enter picks up and puts down, the arrow keys `move`, Escape `cancel`s) is the touch path and
 // the accessible path, and a list that has no keyboard path is not finished.
 const movedItem = (items, from, to) => {
@@ -89,4 +93,4 @@ const tasks = {
   },
 };
 
-export const page = { head: { title: 'Reorder - cookbook' }, namespaces: { tasks } };
+export const page = { head: { title: 'Reorder - cookbook' }, namespaces: { tasks }, plugins: [withFollow, withMoves] };

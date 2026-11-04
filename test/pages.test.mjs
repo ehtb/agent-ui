@@ -196,7 +196,7 @@ test('view, layout and pending belong in view.js, and a finished spec stands alo
 test('contentOf takes the exports of a view.js and refuses any other', () => {
   const layout = (content) => content;
   assert.deepEqual(contentOf({ view: baseView, layout }, 'pages/view.js'), { view: baseView, layout, pending: undefined, shell: undefined });
-  expectError(() => contentOf({ view: baseView, pendng: baseView }, 'pages/about/view.js'), /pages\/about\/view\.js: unknown export "pendng"\. Did you mean "pending"\? Export only view, layout, pending, shell from view\.js/);
+  expectError(() => contentOf({ view: baseView, pendng: baseView }, 'pages/about/view.js'), /pages\/about\/view\.js: unknown export "pendng"\. Did you mean "pending"\? Export only view, layout, pending, shell, paths from view\.js/);
 });
 
 test('a page path is judged by the grammar of URL patterns: its own mistakes are named, with the pattern\'s message', () => {

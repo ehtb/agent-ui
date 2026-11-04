@@ -629,9 +629,25 @@ test('maxBodyBytes limits the request bodies the API reads, and must be a whole 
     const post = (body) => raw(port, '/api/x', { method: 'POST', headers: { 'content-type': 'application/json' }, body });
     assert.equal((await post('{"a":1}')).status, 200);
     const tooLarge = await post(JSON.stringify({ text: 'x'.repeat(50) }));
-    assert.equal(tooLarge.status, 400);
+    assert.equal(tooLarge.status, 413, 'a declared length over the limit is refused before reading');
     assert.equal(tooLarge.headers['x-transform'], 'seen', 'the transform runs for a body it cannot read');
     assert.match(tooLarge.text, /request body too large \(more than 20 bytes\)\. Raise maxBodyBytes of createSsrHandler/);
+    // A chunked body has no declared length: it is counted while it is read, and refused with the same status.
+    const streamed = await new Promise((done, failRequest) => {
+      const outgoing = request({ port, path: '/api/x', method: 'POST', headers: { 'content-type': 'application/json', 'transfer-encoding': 'chunked' } }, (response) => {
+        let text = '';
+        response.on('data', (chunk) => (text += chunk));
+        response.on('end', () => done({ status: response.statusCode, text }));
+      });
+      outgoing.on('error', failRequest);
+      outgoing.write('{"text":"');
+      outgoing.end(`${'x'.repeat(50)}"}`);
+    });
+    assert.equal(streamed.status, 413);
+    assert.match(streamed.text, /request body too large/);
+    const compressed = await raw(port, '/api/x', { method: 'POST', headers: { 'content-type': 'application/json', 'content-encoding': 'gzip' }, body: 'xx' });
+    assert.equal(compressed.status, 415);
+    assert.match(compressed.text, /content-encoding \\"gzip\\" is not decoded by createSsrHandler\. Decode the body in the host server/);
   } finally {
     server.closeAllConnections?.();
     server.close();

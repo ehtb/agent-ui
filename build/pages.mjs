@@ -112,7 +112,7 @@ const entryText = (page, imports, call, { globalStylesheet, pageStyle, toProject
 // between rebuilds. A production build evaluates each page once in Node and writes the finished spec as data (spec.js),
 // which is what the browser entry imports instead.
 let writes = 0; // makes two writes in one millisecond differ
-export const writeGeneratedModules = async (projectRoot, pages, { dev = false, directory = PAGES_DIRECTORY } = {}) => {
+export const writeGeneratedModules = async (projectRoot, pages, { dev = false, directory = PAGES_DIRECTORY, basePath = '' } = {}) => {
   const generated = resolve(projectRoot, GENERATED_DIRECTORY);
   // Node keeps an imported module for the life of the process. The server module, and the page and view it imports, carry a
   // stamp of this write, so a second build in one process (a test, a script) evaluates an edited page.js or view.js again. What those
@@ -140,7 +140,8 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
   });
   if (globalStylesheet) writeFileSync(globalModule, `// Generated: the styles of every page (${globalStylesheet}). Do not edit.\nimport '${importPath(globalModule, wrapperOf.get(globalStylesheet))}';\n`);
   // The entry's last argument: the URL of the entry's own file, which a soft navigation finds in the HTML of the next page.
-  const startCall = (page, content) => `startPage(page, { path: '${page.path}', ${content}, url: import.meta.url, dev: ${dev} });`;
+  // A site below a base path (src/base-path.js) writes it down here, as it writes `dev`: the browser cannot tell it from the address.
+  const startCall = (page, content) => `startPage(page, { path: '${page.path}', ${content}, url: import.meta.url, dev: ${dev}${basePath ? `, basePath: '${basePath}'` : ''} });`;
   for (const page of pages) {
     const folder = join(generated, page.name);
     mkdirSync(folder, { recursive: true });
@@ -164,6 +165,8 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
         '',
         `const definition = definePage(page, { path: '${page.path}', ...contentOf(view, '${page.viewFile}') });`,
         'export const { create, createShell, describePage, namespaces, shellContent, shellName, shellNamespaces, spec } = definition;',
+        '// The URLs check and a static build render a page with parameters at (build/page-paths.mjs); undefined when view.js lists none.',
+        'export const paths = view.paths;',
         '',
       ].join('\n'),
     );
@@ -231,5 +234,5 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
 // What loadConfig adds to a project's configuration: the pages found in the folders, and their generated modules.
 export const expandPages = async (config, projectRoot, options = {}) => {
   const pages = discoverPages(projectRoot);
-  return { ...config, ...(await writeGeneratedModules(projectRoot, pages, options)) };
+  return { ...config, ...(await writeGeneratedModules(projectRoot, pages, { ...options, basePath: config.basePath ?? '' })) };
 };

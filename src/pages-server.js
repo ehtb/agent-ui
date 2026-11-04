@@ -23,5 +23,5 @@ export const createStatusReader = ({ page, path }) => (currentState) => {
   return answer;
 };
 
-// (state) => everything the page says about its document, as the server writes it (src/head-document.js).
-export const createDocumentDescriber = ({ page, path }) => (currentState) => describeDocument(page.head, currentState, `page "${path}" head`);
+// (state, { basePath }) => everything the page says about its document, as the server writes it (src/head-document.js).
+export const createDocumentDescriber = ({ page, path }) => (currentState, { basePath = '' } = {}) => describeDocument(page.head, currentState, `page "${path}" head`, basePath);

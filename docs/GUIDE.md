@@ -4,7 +4,7 @@ Read this before adding or changing a page, a URL or an endpoint. It connects th
 
 ## 1. The model
 
-**A page is a URL, and a URL is a folder.** Every folder below `pages/` that holds a `page.js` is a page, and the folder's path is the page's URL. There is one way to say where a page lives, and nothing else is configured: no list of pages, no base path, no entry to name.
+**A page is a URL, and a URL is a folder.** Every folder below `pages/` that holds a `page.js` is a page, and the folder's path is the page's URL. There is one way to say where a page lives, and nothing else is configured: no list of pages, no entry to name. A site served below a path says so once (`basePath` in `build.config.mjs`), and every URL in it is still written as if it were at the root.
 
 | Folder | URL |
 |---|---|
@@ -238,11 +238,11 @@ server.use(await createSsrHandler({
 - There is no file-upload parser, no streaming request body, no SSE endpoint and no WebSocket endpoint. Receive those in the host server; pass a parsed body to the API as `request.body`, or serve the connection beside the handler.
 - A modal, menu or popover is not a component with a focus trap. Use a native `dialog` with explicit state and copy recipe `modal`: its plugin traps the focus, restores it on close and marks the background `inert`.
 - Translation, locale-aware URLs and right-to-left direction are the project's. Text and `dir` are ordinary state and attributes; the framework ships no message catalogue.
-- A static site (`agent-ui build --static`) is made of pages without parameters that all answer 200; a page with parameters, or a status other than 200, stops the build with the reason. `agent-ui check` renders the pages without parameters and prints the others as a note.
+- A static site (`agent-ui build --static`) writes every page, and a page with parameters once for every URL its `view.js` lists in `export const paths = [...]` (or an async function); a page with parameters that lists none, or a status other than 200, stops the build with the reason. `agent-ui check` renders the same URLs and prints a note for a page with parameters that lists none.
 - The API is Node code. A file host has no API: the static pages and the browser app work, but calls to `/api/...` and plain form posts do not.
-- The site is served from the root of its domain. There is no base path to configure.
+- A site below a path of its domain is `basePath: '/shop'` in `build.config.mjs` (`BUILD.md`, "A site below a base path"). Specs, folders, resources and the API keep writing the site's own paths; a `url()` in CSS is relative to the stylesheet.
 - Code splitting is by page: everything a page lists is in its chunk. A heavy feature inside one page is a plain `import()` (a lazy chunk).
-- Soft navigation does not prefetch the next page and does not restore the scroll position on back and forward; a page's own browser state does not survive a swap, as it does not survive a load.
+- Soft navigation does not prefetch the next page; back and forward restore the window's scroll position, not the one inside a scrolling container; a page's own browser state does not survive a swap, as it does not survive a load.
 - The `forms` handler and the `form` element's `action` are matched by you. The tests in `examples/events/app.test.mjs` post to both to catch drift.
 
 ## 5a. Reporting errors (Sentry and the like)
@@ -275,7 +275,7 @@ export const withErrorReporting = () => (api) =>
 | `pages/a/page.js: its URL "/a/:slug" matches the same URLs as "/a/:id"` | two parameter folders at the same depth | merge the pages, or give one a fixed segment |
 | `the folder name "x y" cannot be part of a URL` | a folder with a space or other character | letters, digits and `. _ ~ -` for a fixed segment, `[name]` for a parameter |
 | `"[...path]" must be the last folder of the path` | a page below a catch-all folder | move the catch-all to the end |
-| `agent-ui check` prints `/x/*rest has parameters, so check does not render it` | a page with parameters has no URL of its own to render | nothing is wrong: its spec is still validated, and `agent-ui serve` renders it for real URLs |
+| `agent-ui check` prints `/x/*rest has parameters and its view.js lists no \`paths\`` | a page with parameters has no URL of its own to render | its spec is still validated; to render it, export `paths = ['/x/a/b']` from its view.js (the same URLs `--static` writes) |
 | `the link "/chekout" is no page` | a typo in an `href` | the message suggests the nearest page |
 | `the soft link "/x" is on a page without a shell` | `soft` on a page that has no shell: nothing handles it | give the page a shell, or remove `soft` |
 | `the soft link "/x" leads to /x, which has no shell` | a `soft` link to a page that is not in this page's shell | give both pages the shell, or remove `soft` |

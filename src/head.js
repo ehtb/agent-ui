@@ -28,6 +28,7 @@
 // src/head-document.js, reached through src/pages-server.js and src/pages-checks.js, which production browser bundles replace by stubs.
 import { URL_PROPS, isUnsafeUrl, valueForState } from './spec-core.js';
 import { codedError } from './errors.js';
+import { BASE_PATH_ATTRIBUTES, withBaseInAttribute } from './base-path.js';
 
 // Elements whose values follow the state and so are updated in a browser; the rest are literal.
 export const DYNAMIC_HEAD_TAGS = ['meta', 'link'];
@@ -42,8 +43,9 @@ export const BODY_END = '<!--agent-ui-body:end-->';
 
 
 // { name: value } with every value read for the state. A value of false, null or undefined leaves the attribute out, true
-// writes it bare (`defer`), anything else is its text. An unsafe URL stops the render with the attribute named.
-const attributesOf = (props, state, where, tag = null) => {
+// writes it bare (`defer`), anything else is its text. An unsafe URL stops the render with the attribute named; a root-absolute
+// URL of the site is written below the base path (src/base-path.js).
+const attributesOf = (props, state, where, tag = null, basePath = '') => {
   const attributes = {};
   for (const [name, raw] of Object.entries(props ?? {})) {
     const value = valueForState(raw, state);
@@ -54,26 +56,27 @@ const attributesOf = (props, state, where, tag = null) => {
     const text = value === true ? true : String(value);
     // Names are case-insensitive in HTML (HREF is href). The src of a script runs code, so a data: URL is as unsafe there as in an href.
     const urlName = name.toLowerCase();
-    if (text !== true && URL_PROPS.includes(urlName) && isUnsafeUrl(tag === 'script' ? 'href' : urlName, text)) throw codedError('AUI0503', { where, name, value: text });
-    attributes[name] = text;
+    const isUrl = text !== true && URL_PROPS.includes(urlName);
+    if (isUrl && isUnsafeUrl(tag === 'script' ? 'href' : urlName, text)) throw codedError('AUI0503', { where, name, value: text });
+    attributes[name] = text !== true && BASE_PATH_ATTRIBUTES.includes(urlName) ? withBaseInAttribute(basePath, urlName, text) : text;
   }
   return attributes;
 };
 
 // The elements of a list with their attributes read for the state. Their text is the server's business (src/head-document.js); a description made here has none (`text` is undefined).
-const resolveTags = (nodes, state, where) => (nodes ?? []).map((node, index) => ({ tag: node.tag, attributes: attributesOf(node.props, state, `${where}[${index}]`, node.tag) }));
+const resolveTags = (nodes, state, where, basePath) => (nodes ?? []).map((node, index) => ({ tag: node.tag, attributes: attributesOf(node.props, state, `${where}[${index}]`, node.tag, basePath) }));
 
 const resolveText = (value, state) => valueForState(value, state) ?? '';
 
 // The description of the document for one state, without the text of scripts and styles: what a browser needs to keep the
 // document current.
-export const resolveHead = (head, state, where = 'head') => ({
+export const resolveHead = (head, state, where = 'head', basePath = '') => ({
   title: resolveText(head.title, state),
   description: resolveText(head.description, state),
   html: attributesOf(head.html, state, `${where}.html`),
   body: attributesOf(head.body, state, `${where}.body`),
-  tags: resolveTags(head.tags, state, `${where}.tags`),
-  bodyTags: resolveTags(head.bodyTags, state, `${where}.bodyTags`),
+  tags: resolveTags(head.tags, state, `${where}.tags`, basePath),
+  bodyTags: resolveTags(head.bodyTags, state, `${where}.bodyTags`, basePath),
 });
 
 // ---- the browser's side ----------------------------------------------------------------------------------------------
@@ -178,7 +181,7 @@ export const applyHead = (document, description) => {
 // The server writes `head` into every document it renders, and a soft navigation copies it from the document it fetched
 // (src/head-reader.js), so the plugin is only for a head that is a function of the state; the page checks say so (src/pages-checks.js).
 export const withHead = (environment) => (api) => {
-  const { win, page } = environment;
+  const { win, page, basePath = '' } = environment;
   if (!win?.document?.createElement) return; // a server renders the head itself (server/document.mjs): its window has no document to keep
-  api.watch(api.keys(), () => applyHead(win.document, resolveHead(page.head, api.state(), `page "${page.path}" head`)));
+  api.watch(api.keys(), () => applyHead(win.document, resolveHead(page.head, api.state(), `page "${page.path}" head`, basePath)));
 };

@@ -36,12 +36,13 @@
 // Reactivity: signals, effects, batched flush
 // ---------------------------------------------------------------------------
 
-import { DELEGATED_EVENTS, KEY_EVENTS, URL_PROPS, isBinding, isPlainObject, toArray, matchesArgumentType, isUnsafeUrl, isSameValue, readEventPath, eventKeyName, splitRowPath } from './spec-core.js';
+import { DELEGATED_EVENTS, KEY_EVENTS, SVG_NAMESPACE, SVG_TAGS, URL_PROPS, isBinding, isPlainObject, toArray, matchesArgumentType, isUnsafeUrl, isSameValue, readEventPath, eventKeyName, splitRowPath } from './spec-core.js';
 import { validate, grammar, findJsonProblems, findShapeProblems } from './validate.js';
 import { didYouMean, fail, failOwnedTwice } from './messages.js';
-import { checkRowChanges, checkRowKey, checkRowState, checkRowStateWrite, checkEachKeys, consumeCheckedListProblem, forgetCheckedListProblems } from './runtime-checks.js';
+import { checkBasePath, checkPluginProperties, checkPropertyHandler, noteRowsJumped, checkRowChanges, checkRowKey, checkRowState, checkRowStateWrite, checkEachKeys, consumeCheckedListProblem, forgetCheckedListProblems } from './runtime-checks.js';
 import { codedError } from './errors.js';
 import { ROW_STATE_KEY, flattenNamespaces, mergeInitialState, mergeStateValues, nestByNamespace, splitStatePath } from './namespaces.js';
+import { BASE_PATH_ATTRIBUTES, withBaseInAttribute } from './base-path.js';
 
 // One entry point for everything public: the validator and grammar live in validate.js, shared helpers in spec-core.js.
 export { validate, grammar, isPlainObject, toArray, isSameValue, readEventPath, eventKeyName, mergeInitialState };
@@ -49,6 +50,11 @@ export { validate, grammar, isPlainObject, toArray, isSameValue, readEventPath, 
 let activeEffect = null; // the effect currently running (collects the signals it reads)
 let activeScope = null; // the list collecting disposers of effects created right now
 let activeReport = null; // how errors are reported for the app whose code is running: effects made now remember it
+let effectRuns = 0; // every run of every effect (a binding, a derived value, a watch), for the cost a test measures (measureAction)
+
+// How many times effects have run in this process: a binding that runs again for a row that did not change is the cost of a list whose
+// items lost their reference, which the DOM writes alone do not show (they skip a value that is the same).
+export const countEffectRuns = () => effectRuns;
 const pendingEffects = new Set();
 let flushScheduled = false;
 
@@ -155,6 +161,7 @@ export const signal = (initialValue) => {
 // Runs `callback` now and again whenever a signal it read changes. Returns a disposer.
 export const effect = (callback, { owner = null, derivedName = null } = {}) => {
   const runEffect = () => {
+    effectRuns++;
     for (const subscribers of runEffect.dependencies) subscribers.delete(runEffect);
     runEffect.dependencies.clear();
     const previousEffect = activeEffect;
@@ -214,7 +221,7 @@ const freezeDeep = (value) => {
 // Application: state, rendering, events, agent API
 // ---------------------------------------------------------------------------
 
-const APP_OPTIONS = ['namespaces', 'initialState', 'spec', 'root', 'plugins', 'dev', 'debug'];
+const APP_OPTIONS = ['namespaces', 'initialState', 'spec', 'root', 'plugins', 'dev', 'debug', 'basePath'];
 
 // Everything an app creates while it is being made (derived values, bindings, the effects of plugins) is collected, so that
 // `destroy()` can stop all of it. A page that replaces another one (src/navigation.js) needs the old app gone, not just hidden.
@@ -236,9 +243,10 @@ const createApp = (options, disposers) => {
   for (const key of Object.keys(options ?? {})) {
     if (!APP_OPTIONS.includes(key)) fail('app', `unknown option "${key}"`, `${didYouMean(key, APP_OPTIONS)}Allowed options: ${APP_OPTIONS.join(', ')}`);
   }
-  const { namespaces = {}, initialState = {}, spec, root, plugins = [], dev, debug = false } = options;
+  const { namespaces = {}, initialState = {}, spec, root, plugins = [], dev, debug = false, basePath = '' } = options;
   if (typeof dev !== 'boolean') fail('app', `dev is ${JSON.stringify(dev) ?? 'missing'}`, 'Pass dev: true while developing (state is frozen and mistakes are reported) and dev: false in production. There is no default, so the mode is always written down');
   if (debug !== undefined && typeof debug !== 'boolean') fail('app', `debug is ${JSON.stringify(debug)}`, 'Write debug: true to make the browser console show what the app does, or leave it out');
+  checkBasePath(basePath);
   // Server rendering passes a root from a server document; browsers and the test shim use the global one.
   const document = root.ownerDocument ?? globalThis.document;
   const problems = validate(spec, { namespaces, initialState });
@@ -627,87 +635,17 @@ const createApp = (options, disposers) => {
     // Only the marker this call wrote is removed: a row that already left carries `leave`, which the removal itself ends.
     nextFrame(() => nextFrame(() => node.getAttribute('data-transition') === 'enter' && node.removeAttribute('data-transition')));
   };
-  // A row with `transition: ms` that changes position is moved by the browser's animation engine (FLIP): measure
-  // before the reorder, then play a translate from the old spot to the new one. Skipped where there is no layout
-  // (server, test shim), while replaying, and for users who ask for reduced motion. State is already final.
-  const canAnimateMoves = () => !replaying && firstRenderDone && !globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  // "First" is where the row is on screen now, which for a row still sliding from an earlier move is partway. That
-  // earlier animation is cancelled right after measuring, so "Last" is the real layout slot and two animations never
-  // stack on one row.
-  const measureRows = (rows) => {
-    const rects = new Map();
-    for (const row of rows) {
-      if (row.element.__transitionMs && !row.element.__follow && row.element.getBoundingClientRect) {
-        rects.set(row, row.element.getBoundingClientRect());
-        row.element.__moveAnimation?.cancel();
-      }
-    }
-    return rects;
-  };
-  const playMoves = (rects) => {
-    for (const [row, before] of rects) {
-      if (!row.element.animate) continue;
-      const after = row.element.getBoundingClientRect();
-      const deltaX = before.left - after.left;
-      const deltaY = before.top - after.top;
-      if (deltaX === 0 && deltaY === 0) continue;
-      row.element.__moveAnimation = row.element.animate([{ transform: `translate(${deltaX}px, ${deltaY}px)` }, { transform: 'none' }], { duration: row.element.__transitionMs, easing: 'ease' });
-    }
-  };
-  // `follow` (a prop, like `focus`): while true, the element tracks the pointer. The runtime listens to the document
-  // only for that time and writes how far the element must be moved from where the list laid it out, as the CSS
-  // custom properties --follow-x and --follow-y; the CSS decides what to do with them (a transform). No coordinate
-  // enters the state or the log, and the element keeps its grab point when the list reorders under it.
-  const followers = new Set();
-  const stopFollowing = (element) => {
-    element.__follow?.stop();
-  };
-  const startFollowing = (element) => {
-    if (element.__follow || !document.addEventListener || !element.getBoundingClientRect) return;
-    let start = null;
-    let pointer = null;
-    let origin = null;
-    let moved = { x: 0, y: 0 };
-    let scheduled = false;
-    const follower = {
-      update: () => {
-        scheduled = false;
-        if (!pointer || element.__follow !== follower) return;
-        const rect = element.getBoundingClientRect();
-        moved = { x: origin.left + pointer.x - start.x - (rect.left - moved.x), y: origin.top + pointer.y - start.y - (rect.top - moved.y) };
-        element.style.setProperty('--follow-x', `${moved.x}px`);
-        element.style.setProperty('--follow-y', `${moved.y}px`);
-      },
-      stop: () => {
-        document.removeEventListener('pointermove', onMove);
-        followers.delete(follower);
-        element.__follow = null;
-        pointer = null; // a frame already scheduled must not write after this
-        element.style?.removeProperty('--follow-x');
-        element.style?.removeProperty('--follow-y');
-      },
-    };
-    // The first move fixes the start: the element is still where the list put it, so the pointer's place inside it is kept.
-    const onMove = (event) => {
-      if (element.isConnected === false) return follower.stop();
-      pointer = { x: event.clientX, y: event.clientY };
-      if (!start) {
-        start = pointer;
-        const rect = element.getBoundingClientRect();
-        origin = { left: rect.left, top: rect.top };
-      }
-      if (!scheduled) {
-        scheduled = true;
-        nextFrame(follower.update);
-      }
-    };
-    document.addEventListener('pointermove', onMove);
-    followers.add(follower);
-    element.__follow = follower;
-  };
+  // Plugins that move rows (src/moves.js slides a row to its new place, src/follow.js keeps a picked-up row under the pointer) hear of
+  // every reorder of a list: before it with the row elements that stay, and after it through the function they return.
+  const reorderHandlers = new Set();
+  // Props the grammar knows but a plugin writes (`follow`, src/follow.js): their writes go to the plugin that handles them, and the ones
+  // made before it was installed (the first render) are kept and handed over then. The spec's use of them is noted when it is compiled.
+  const propertyHandlers = Object.create(null);
+  const pendingPropertyWrites = [];
+  const pluginPropertiesUsed = new Set();
+  const movesWarned = dev ? new Set() : null; // development: the lists whose rows jumped without the moves plugin, said once each
   const removeNode = (node) => {
     if (node.getAttribute?.('data-transition') === 'leave') return; // already on its way out: a second removal would schedule a second detach
-    stopFollowing(node);
     const detach = () => {
       node.remove(); // first: an observer that throws must not leave the node in the page
       elementObservers.forEach((observer) => observer.removed(node));
@@ -728,8 +666,8 @@ const createApp = (options, disposers) => {
 
   const setProperty = (element, name, value) => {
     if (name === 'follow') {
-      if (value) startFollowing(element);
-      else stopFollowing(element);
+      if (propertyHandlers.follow) propertyHandlers.follow(element, value);
+      else pendingPropertyWrites.push([element, name, value]);
       return;
     }
     if (name === 'soft') {
@@ -754,6 +692,8 @@ const createApp = (options, disposers) => {
       element.removeAttribute(name);
       return;
     }
+    // A root-absolute URL of the site is written below the base on the wire (src/base-path.js).
+    if (basePath && BASE_PATH_ATTRIBUTES.includes(name)) value = withBaseInAttribute(basePath, name, value);
     const isAria = name.startsWith('aria-');
     if (value == null || (value === false && !isAria)) element.removeAttribute(name);
     else element.setAttribute(name, value === true && !isAria ? '' : value);
@@ -798,6 +738,7 @@ const createApp = (options, disposers) => {
     // Order matters: `type` must be set before `value`/`checked`, and a select's `value` can only be applied once
     // its options exist, so it is applied after the children.
     const propNames = Object.keys(props);
+    if ('follow' in props) pluginPropertiesUsed.add('follow');
     const deferredNames = node.tag === 'select' ? propNames.filter((name) => name === 'value') : [];
     const hasClasses = Boolean(node.classes);
     // With `classes`, the one effect below writes the whole class attribute, so `class` is read there and not set twice.
@@ -810,9 +751,10 @@ const createApp = (options, disposers) => {
     const classPlans = classNames && classNames.map((className) => planBinding(node.classes[className]));
     const planBaseClass = classPlans && 'class' in props ? planProp('class') : null;
     const childStamps = toArray(node.children).map((child, index) => compileNode(child, `${path}.${index}`));
+    const isSvg = SVG_TAGS.includes(node.tag); // drawn in the SVG namespace, or the browser makes an HTML element it does not draw
 
     return (row) => {
-      const element = document.createElement(node.tag);
+      const element = isSvg ? document.createElementNS(SVG_NAMESPACE, node.tag) : document.createElement(node.tag);
       element.setAttribute('data-id', dataId);
       const applyPlan = ({ name, bindRow, literal }) => {
         if (bindRow) {
@@ -957,20 +899,23 @@ const createApp = (options, disposers) => {
           removeNode(row.element);
         }
 
-        const rectsBefore = canAnimateMoves() ? measureRows([...rowsByKey].filter(([key]) => nextRowsByKey.has(key)).map(([, row]) => row)) : null;
+        const afterReorder = reorderHandlers.size && rowsByKey.size ? [...reorderHandlers].map((handler) => handler([...rowsByKey].filter(([key]) => nextRowsByKey.has(key)).map(([, row]) => row.element))) : null;
         // Place rows in order, moving only the ones that are out of place (walking backwards).
         let followingNode = endMarker;
+        let movedWithTransition = false;
         for (let index = items.length - 1; index >= 0; index--) {
           const rowElement = nextRowsByKey.get(itemKeys[index]).element;
           // A row that is leaving (transition) stays in the page for a while; it does not count as a neighbour.
           let neighbour = rowElement.nextSibling;
           while (neighbour && neighbour !== followingNode && neighbour.getAttribute?.('data-transition') === 'leave') neighbour = neighbour.nextSibling;
-          if (neighbour !== followingNode) parent.insertBefore(rowElement, followingNode);
+          if (neighbour !== followingNode) {
+            if (rowElement.__transitionMs && rowsByKey.has(itemKeys[index])) movedWithTransition = true;
+            parent.insertBefore(rowElement, followingNode);
+          }
           followingNode = rowElement;
         }
-        // A row that follows the pointer keeps its grab point when the list moves it to a new place.
-        followers.forEach((follower) => follower.update());
-        if (rectsBefore) playMoves(rectsBefore);
+        afterReorder?.forEach((after) => after?.());
+        if (movesWarned && movedWithTransition && !reorderHandlers.size) noteRowsJumped(path, movesWarned);
         enteringRows.forEach(markEntering);
         rowsByKey = nextRowsByKey;
       });
@@ -1147,6 +1092,20 @@ const createApp = (options, disposers) => {
     },
     // A plugin that reads a part of the declarations (the `resources` of every namespace) says so, so a declaration nobody reads is reported.
     claim: (feature) => claimedFeatures.add(feature),
+    // The plugin that writes a prop the grammar leaves to a plugin (`follow`, src/follow.js) takes its writes: handler(element, value), now
+    // for the writes the first render made and then for every later one.
+    handleProperty: (name, handler) => {
+      checkPropertyHandler(name, handler, propertyHandlers);
+      propertyHandlers[name] = handler;
+      claimedFeatures.add(name);
+      for (const [element, propertyName, value] of pendingPropertyWrites.splice(0)) if (propertyName === name) handler(element, value);
+    },
+    // handler(rowElements) before every reorder of a list, with the row elements that stay; it may return a function, called after the
+    // rows are in their new places (src/moves.js, src/follow.js). Returns a function that removes the handler.
+    onReorder: (handler) => {
+      reorderHandlers.add(handler);
+      return () => reorderHandlers.delete(handler);
+    },
     // Calls callback({"namespace.key": value, ...}) now and after every change to any listed key (state or derived).
     // `owns` claims qualified state keys so dev mode refuses writes from any other action.
     watch: (keys, callback, { owns } = {}) => {
@@ -1188,7 +1147,6 @@ const createApp = (options, disposers) => {
       destroyed = true;
       for (const cleanup of cleanups.splice(0).reverse()) cleanup();
       disposers.forEach((dispose) => dispose());
-      followers.forEach((follower) => follower.stop());
       for (const eventType of DELEGATED_EVENTS) root.removeEventListener(eventType, handleEvent);
       delete root.__app;
       root.replaceChildren();
@@ -1250,6 +1208,7 @@ const createApp = (options, disposers) => {
         fail(`namespace "${namespace}"`, 'declares resources, but no plugin loads them', 'Add the resources plugin to plugins (resources(fetchFunction), imported from @ehtb/agent-ui/resources); in a page write `plugins: [withResources]`');
       }
     }
+    checkPluginProperties(pluginPropertiesUsed, claimedFeatures);
     // Development: a list in a branch that is not shown yet is checked now too, so a duplicate key in its data is found before the branch opens.
     if (dev) checkEachKeys(spec, (key) => (key in derive && refreshDerived(derivedOwner, key), signals[key]?.peek()), mountedEachPaths, checkedListProblems, reportError);
     const started = startupReports;

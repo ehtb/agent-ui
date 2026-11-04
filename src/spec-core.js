@@ -8,6 +8,10 @@ export const BINDING_KEYS = ['state', 'item', 'row', 'rowState', 'not', 'length'
 export const DELEGATED_EVENTS = ['click', 'dblclick', 'pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'pointerover', 'pointerout', 'input', 'change', 'keydown', 'keyup', 'focusin', 'focusout', 'submit'];
 export const KEY_EVENTS = ['keydown', 'keyup'];
 export const URL_PROPS = ['href', 'src', 'action', 'formaction'];
+// SVG for icons and simple drawings: a closed set of tags the runtime makes in the SVG namespace (src/ui.js). The grammar's rules for
+// them (where they may stand, which attributes they take) are in src/grammar.js and src/validate.js.
+export const SVG_TAGS = ['svg', 'g', 'path', 'circle', 'ellipse', 'rect', 'line', 'polyline', 'polygon', 'use'];
+export const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 // The keys of an element that the builders keep outside `props` (everything else they are given becomes a prop).
 export const ELEMENT_FIELDS = ['id', 'classes', 'on', 'transition'];
 

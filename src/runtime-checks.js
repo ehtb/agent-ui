@@ -1,12 +1,41 @@
 // Development checks of the runtime (src/ui.js) that only produce messages: the per-row state of a namespace (rowState). Production builds replace this module with a stub whose functions do
 // nothing (build/stubs/runtime-checks-omitted.js), so the text of these errors is not downloaded. The code that follows a
 // check does not depend on it: it works with the values the checks would have accepted.
-import { didYouMean } from './messages.js';
+import { didYouMean, fail } from './messages.js';
+import { BASE_PATH_ADVICE, isBasePath } from './base-path-checks.js';
 
 // The contract of this module: production builds replace it with build/stubs/runtime-checks-omitted.js, but it can also be in a
 // production build (`--validator=include`) and an app can be made with `dev: false` while it is. So every function here has to work
 // when ui.js passes it nothing because it is not in development (a `null` record, no `dev`-only state), and test/runtime-checks.test.mjs
 // runs the app both ways.
+
+export const checkBasePath = (basePath) => {
+  if (!isBasePath(basePath)) fail('app', `basePath ${JSON.stringify(basePath)} is not allowed`, BASE_PATH_ADVICE);
+};
+
+// The props the grammar leaves to a plugin, and the plugin that writes each (src/follow.js).
+const PLUGIN_PROPERTIES = { follow: 'withFollow, the export of @ehtb/agent-ui/follow (plugins: [withFollow] in page.js; follow in the plugins of app())' };
+
+export const checkPropertyHandler = (name, handler, handlers) => {
+  if (!Object.hasOwn(PLUGIN_PROPERTIES, name)) fail('api.handleProperty', `"${name}" is not a prop a plugin writes`, `${didYouMean(name, Object.keys(PLUGIN_PROPERTIES))}Props a plugin writes: ${Object.keys(PLUGIN_PROPERTIES).join(', ')}`);
+  if (typeof handler !== 'function') fail('api.handleProperty', `the handler of "${name}" is ${typeof handler}, not a function`, 'Pass (element, value) => { ... }');
+  if (handlers[name]) fail('api.handleProperty', `a second plugin handles "${name}"`, 'List the plugin once');
+};
+
+// After the plugins are installed: a spec that uses a prop no plugin handles would silently do nothing with it.
+export const checkPluginProperties = (used, claimed) => {
+  for (const name of used) {
+    if (!claimed.has(name)) fail('app', `the spec uses "${name}", but no plugin handles it`, `Add ${PLUGIN_PROPERTIES[name]}; recipe drag-reorder shows it`);
+  }
+};
+
+// Rows with `transition` changed places without the moves plugin, so they jumped instead of sliding. Said once per list, in the console:
+// a list that never needs to slide is not an error.
+export const noteRowsJumped = (path, noted) => {
+  if (noted.has(path)) return;
+  noted.add(path);
+  console.warn(`each at ${path}: rows with \`transition\` changed places and jumped. To slide them, add withMoves, the export of @ehtb/agent-ui/moves (plugins: [withMoves] in page.js; moves in the plugins of app()); recipe drag-reorder shows it`);
+};
 
 export const checkRowState = (operation, namespace, rowDefaults) => {
   if (!rowDefaults) throw new Error(`store.${operation}(...): namespace "${namespace}" has no rowState. Declare the per-row fields with their defaults: rowState: { open: false }`);

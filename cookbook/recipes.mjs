@@ -39,7 +39,7 @@ export const recipes = [
   {
     name: 'drag-reorder',
     title: 'A list reordered by dragging a row, or from the keyboard',
-    use: 'Drag and drop. There is no drag-and-drop API (no dragstart, drop or dataTransfer): a grip button picks a row up on pointerdown, entering another row moves it there, releasing drops it, and every step is a logged action. `follow` keeps the row under the pointer (the coordinates never enter the state) and `transition` slides the others aside. Escape and a cancelled pointer put the row back (the start position is state). A touch pointer never reports the rows it crosses, so the keyboard (Enter, the arrow keys) is both the touch path and the accessible one: build it every time.',
+    use: 'Drag and drop. There is no drag-and-drop API (no dragstart, drop or dataTransfer): a grip button picks a row up on pointerdown, entering another row moves it there, releasing drops it, and every step is a logged action. `follow` (plugin `withFollow`) keeps the row under the pointer (the coordinates never enter the state) and `transition` slides the others aside (plugin `withMoves`); the page lists both plugins. Escape and a cancelled pointer put the row back (the start position is state). A touch pointer never reports the rows it crosses, so the keyboard (Enter, the arrow keys) is both the touch path and the accessible one: build it every time.',
     files: ['pages/drag-reorder/page.js', 'pages/drag-reorder/view.js', 'pages/drag-reorder/page.css'],
   },
   {
@@ -71,6 +71,12 @@ export const recipes = [
     title: 'A chart, an editor or a map drawn by a plugin into one element',
     use: 'Anything that owns its own DOM. The spec has an empty element with an explicit id; a plugin claims it with `mountElement`, draws into it, reports what happens with `api.dispatch`, and cleans up when the element leaves the page.',
     files: ['pages/draw-into-element/page.js', 'pages/draw-into-element/view.js', 'pages/draw-into-element/bars.js'],
+  },
+  {
+    name: 'svg-icons',
+    title: 'Icons and a small chart in SVG',
+    use: 'An icon next to text is `aria-hidden`, sized with `1em` and coloured with `currentColor`; an icon used many times comes from a sprite in public/ with `use`; a drawing that says something is `role: \'img\'` with an `aria-label`. What is drawn from data (the stars, the points of a line) is a derived value. A large or interactive chart belongs to a library drawn by a plugin (recipe `draw-into-element`).',
+    files: ['pages/svg-icons/page.js', 'pages/svg-icons/view.js', 'public/icons.svg'],
   },
   {
     name: 'server-hooks',

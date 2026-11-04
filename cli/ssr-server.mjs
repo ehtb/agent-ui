@@ -10,6 +10,6 @@ export const createSsrServer = async (options = {}) => {
   const render = await createSsrHandler(options);
   const { config, root = process.cwd(), outDir = config.outDir ?? 'dist' } = options;
   const outputDirectory = resolve(root, outDir);
-  const files = createStaticHandler(outputDirectory, { assetsDir: config.assetsDir ?? 'assets', onError: options.onError, hosts: options.hosts });
+  const files = createStaticHandler(outputDirectory, { assetsDir: config.assetsDir ?? 'assets', onError: options.onError, hosts: options.hosts, basePath: config.basePath ?? '' });
   return createServer((request, response) => render(request, response, () => files(request, response)));
 };

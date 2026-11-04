@@ -4,7 +4,7 @@
 //   --validator  keep or leave out the spec validator (default: omit in production, include with --dev)
 //   --out        output directory (default from the configuration)
 //   --source-maps  write a .map file next to every chunk (the same as sourceMaps: true in the configuration)
-//   --static     also write every page as <path>/index.html for a file host (a site of pages without parameters, each answering 200)
+//   --static     also write every page as <path>/index.html for a file host (a page with parameters once for each URL its view.js lists in `paths`; each answers 200)
 import { build } from '../build/build.mjs';
 import { assertStaticSite, prerender } from '../build/prerender.mjs';
 import { formatReport } from '../build/write-site.mjs';
@@ -23,7 +23,7 @@ try {
   });
   if (options.static) {
     try {
-      assertStaticSite(config.pages); // before the build writes anything: a refused site leaves no half-written output behind
+      await assertStaticSite(config.pages, { projectRoot }); // before the build writes anything: a refused site leaves no half-written output behind
     } catch (error) {
       console.error(`build failed: ${error.message}`);
       process.exit(1);
@@ -38,7 +38,7 @@ try {
   if (options.static) {
     let rendered;
     try {
-      rendered = await prerender({ projectRoot, outDir: options.out || config.outDir, fetchFunction: config.fetchFunction, pages: config.pages, timeoutMs: config.renderTimeoutMs ?? 2000, stateForBrowser: config.stateForBrowser ?? null });
+      rendered = await prerender({ projectRoot, outDir: options.out || config.outDir, fetchFunction: config.fetchFunction, pages: config.pages, timeoutMs: config.renderTimeoutMs ?? 2000, stateForBrowser: config.stateForBrowser ?? null, basePath: config.basePath ?? '' });
     } catch (error) {
       console.error(`build failed: ${error.message}`); // a mistake in the pages (a page with parameters, a page that never became ready), not a crash
       process.exit(1);

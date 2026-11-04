@@ -6,6 +6,8 @@ import { createRoot, findByTag } from './support/dom-shim.mjs';
 
 const { expandComponents } = await import('../src/components.js');
 const { app } = await import('../src/ui.js');
+const { follow } = await import('../src/follow.js');
+const { moves } = await import('../src/moves.js');
 
 const components = {
   card: { params: ['id', 'title'], spec: { tag: 'li', id: { param: 'id' }, children: [{ tag: 'h3', children: { param: 'title' } }, { slot: 'children' }] } },
@@ -360,6 +362,7 @@ const moveSpec = (transition) => ({
     },
   },
   spec: { tag: 'ul', id: 'list', children: { each: 'box.items', key: 'id', template: { tag: 'li', ...(transition ? { transition } : {}), children: { item: 'id' } } } },
+  plugins: [moves],
 });
 
 test('transition: a row that changes position slides from its old place (FLIP), the others stay still', async () => {
@@ -425,6 +428,7 @@ test('follow: while true the element tracks the pointer through --follow-x / --f
       namespaces: { box: { state: { on: false }, actions: { set: { args: { on: 'boolean' }, run: (store, { on }) => store.set('on', on) } } } },
       spec: { tag: 'div', id: 'card', props: { follow: { state: 'box.on' } }, children: 'card' },
       root,
+      plugins: [follow],
     });
     await ui.settle();
     assert.equal(listeners.length, 0, 'not following: no listener on the document');
@@ -491,6 +495,47 @@ test('transition: a second move while the first is still sliding starts from whe
     DomElement.prototype.getBoundingClientRect = original.rect;
     DomElement.prototype.animate = original.animate;
   }
+});
+
+test('follow and moves are plugins: a spec that uses follow without its plugin fails at mount with the import; rows with transition that move without moves jump, said once', async () => {
+  for (const dev of [true, false]) {
+    assert.throws(
+      () => mountSpec({ dev, namespaces: {}, spec: { tag: 'div', props: { follow: false }, children: 'x' } }),
+      /app: the spec uses "follow", but no plugin handles it\. Add withFollow, the export of @ehtb\/agent-ui\/follow \(plugins: \[withFollow\] in page\.js; follow in the plugins of app\(\)\)/,
+    );
+  }
+  // A follow inside a branch that is not shown yet is found too: the whole spec is compiled at mount.
+  assert.throws(() => mountSpec({ namespaces: { box: { state: { open: false } } }, spec: { when: { state: 'box.open' }, children: { tag: 'div', props: { follow: true }, children: 'x' } } }), /no plugin handles it/);
+  const warnings = [];
+  const warn = console.warn;
+  console.warn = (message) => warnings.push(message);
+  try {
+    const { ui } = mountSpec({ ...moveSpec(120), plugins: [] });
+    ui.dispatch('box.reverse');
+    await ui.settle();
+    ui.dispatch('box.reverse');
+    await ui.settle();
+    assert.equal(warnings.length, 1, 'once per list');
+    assert.match(warnings[0], /^each at 0\.0: rows with `transition` changed places and jumped\. To slide them, add withMoves, the export of @ehtb\/agent-ui\/moves/);
+    const quiet = mountSpec({ ...moveSpec(120), plugins: [], dev: false });
+    quiet.ui.dispatch('box.reverse');
+    await quiet.ui.settle();
+    assert.equal(warnings.length, 1, 'production says nothing');
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test('handleProperty hands the plugin the writes made before it was installed, and refuses a prop no plugin writes or a second handler', async () => {
+  const seen = [];
+  const recorder = (api) => api.handleProperty('follow', (element, value) => seen.push([element.getAttribute('data-id'), value]));
+  const { ui } = mountSpec({ namespaces: { box: { state: { on: true }, actions: { off: { args: {}, run: (store) => store.set('on', false) } } } }, spec: { tag: 'div', id: 'card', props: { follow: { state: 'box.on' } }, children: 'x' }, plugins: [recorder] });
+  assert.deepEqual(seen, [['card', true]], 'the write of the first render, made before the plugin existed');
+  ui.dispatch('box.off');
+  await ui.settle();
+  assert.deepEqual(seen.at(-1), ['card', false]);
+  assert.throws(() => mountSpec({ spec: { tag: 'p', children: 'x' }, plugins: [(api) => api.handleProperty('folow', () => {})] }), /api\.handleProperty: "folow" is not a prop a plugin writes\. Did you mean "follow"\?/);
+  assert.throws(() => mountSpec({ spec: { tag: 'div', props: { follow: false }, children: 'x' }, plugins: [follow, follow] }), /api\.handleProperty: a second plugin handles "follow"\. List the plugin once/);
 });
 
 test('a default that does not fit the declared type, and a component without a spec element, are reported with the component named', async () => {

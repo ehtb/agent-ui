@@ -50,6 +50,7 @@ import { app } from './ui.js';
 import { browserEnvironment } from './hydrate.js';
 import { codedError } from './errors.js';
 import { RESERVED_NAMESPACE, declaredStateKeys, mergeInitialState } from './namespaces.js';
+import { withoutBase } from './base-path.js';
 import { compileUrlPattern } from './url-pattern.js';
 import { checkPage, checkViewExports } from './pages-checks.js';
 import { exposeHot } from './hot.js';
@@ -130,20 +131,22 @@ export const definePage = (page, { path, view, layout, pending, spec, shell: she
   // The same function the browser entry and the server renderer call. `environment.shell` is the app of the page's shell, when it
   // has one: what the shell reads from this page (page.shell.reads) and where route.go leads start here and end when this app is destroyed.
   const create = (environment) => {
-    const { root, win, dev, initialState = {}, shell: shellApp } = environment;
-    const params = pattern.match(pathWithoutTrailingSlash(win?.location?.pathname ?? path)) ?? {};
+    const { root, win, dev, initialState = {}, shell: shellApp, basePath = '' } = environment;
+    const pathname = win?.location?.pathname === undefined ? path : withoutBase(basePath, win.location.pathname) ?? path;
+    const params = pattern.match(pathWithoutTrailingSlash(pathname)) ?? {};
     const ui = app({
       namespaces,
       initialState: mergeInitialState(initialState, { [RESERVED_NAMESPACE]: { params } }),
       spec: pageSpec,
       root,
       dev,
+      basePath,
       debug: environment.debug ?? page.debug, // the server says false; a browser says nothing, and the page decides
       plugins: [...pagePlugins.map((plugin) => plugin({ ...environment, page: { path, head: page.head } })), keepTitleCurrent(win)],
     });
     if (shellApp && page.shell) {
       try {
-        ui.onDestroy(page.shell.connect(ui, shellApp, win));
+        ui.onDestroy(page.shell.connect(ui, shellApp, win, basePath));
       } catch (error) {
         ui.destroy(); // a page that cannot be read by its shell must not stay mounted
         throw error;
@@ -191,12 +194,12 @@ export const currentPage = () => current;
 // What every generated browser entry calls (build/pages.mjs): register the page and, when it is the first in this document, start it
 // from the state the server embedded. A production entry passes the finished `spec` (spec.js) and `shell` (the shell's content
 // as data); a development entry passes `view`/`layout`/`pending`/`shell` and builds the spec here. Returns the definition.
-export const startPage = (page, { url, dev, ...options }) => {
+export const startPage = (page, { url, dev, basePath = '', ...options }) => {
   const entry = definePage(page, options);
   exposeHot({ entries, getCurrent: () => current }); // `agent-ui dev` swaps the running page for an edited one (src/hot.js); a production build has a stub there
   if (url) entries.set(url, entry);
   if (current) return entry; // a soft navigation imported this entry; it starts the page itself (src/navigation.js)
-  const environment = browserEnvironment({ dev });
-  current = { ...(page.shell ? page.shell.start(entry, environment) : { entry, ui: entry.mount(environment), shellApp: null, slot: environment.root }), dev };
+  const environment = browserEnvironment({ dev, basePath });
+  current = { ...(page.shell ? page.shell.start(entry, environment) : { entry, ui: entry.mount(environment), shellApp: null, slot: environment.root }), dev, basePath };
   return entry;
 };

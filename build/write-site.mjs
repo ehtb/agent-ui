@@ -9,6 +9,8 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { escapeAttribute } from '../src/html-escape.js';
 import { toArray } from '../src/spec-core.js';
+import { fail } from '../src/messages.js';
+import { BASE_PATH_ADVICE, isBasePath } from '../src/base-path-checks.js';
 import { APP_ELEMENT_ID } from '../src/hydrate.js';
 import { moduleScriptHtml, stylesheetLinkHtml } from '../src/document-markup.js';
 import { PAGES_DIRECTORY } from './pages.mjs';
@@ -51,7 +53,8 @@ export const assertSafeOutputDirectory = ({ projectRoot, outDir, entryPaths, pub
   if (existsSync(join(output, 'package.json')) || existsSync(join(output, 'build.config.mjs'))) refuse('contains a package.json or build.config.mjs, so it is a project and not a build output');
 };
 
-export const writeSite = ({ projectRoot, outDir, assetsDir, graph, plan, generated, publicDir = null, alsoStamped = [] }) => {
+export const writeSite = ({ projectRoot, outDir, assetsDir, basePath = '', graph, plan, generated, publicDir = null, alsoStamped = [] }) => {
+  if (!isBasePath(basePath)) fail('writeSite', `basePath ${JSON.stringify(basePath)} is not allowed`, BASE_PATH_ADVICE);
   const outputDirectory = resolve(projectRoot, outDir);
   // Also checked here, so code that imports writeSite directly is protected like the CLI.
   assertSafeOutputDirectory({ projectRoot, outDir, entryPaths: [...graph.roots.filter((root) => root.kind === 'entry').map((root) => dirname(root.path)), ...graph.modules.keys()], publicDirectories: toArray(publicDir) });
@@ -63,8 +66,9 @@ export const writeSite = ({ projectRoot, outDir, assetsDir, graph, plan, generat
   }
 
   const writeAsset = (fileName, text) => writeFileSync(join(outputDirectory, assetsDir, fileName), text);
-  // Asset URLs are root-absolute: a page such as /product/3 is served below a path, and a relative URL would break there.
-  const assetUrl = (fileName) => `/${assetsDir}/${fileName}`;
+  // Asset URLs are root-absolute: a page such as /product/3 is served below a path, and a relative URL would break there. A site
+  // below a base path (src/base-path.js) has the base in front of them.
+  const assetUrl = (fileName) => `${basePath}/${assetsDir}/${fileName}`;
   const sizeOf = (text) => ({ bytes: Buffer.byteLength(text), gzipBytes: gzipSync(text).length });
 
   const chunkReport = {};
@@ -144,6 +148,10 @@ export const writeSite = ({ projectRoot, outDir, assetsDir, graph, plan, generat
         return size ? { bytes: total.bytes + size.bytes, gzipBytes: total.gzipBytes + size.gzipBytes } : total;
       }, { bytes: 0, gzipBytes: 0 }),
     };
+    // What a first visit downloads before the page runs: the JavaScript loaded at startup and the stylesheets (each file gzipped on
+    // its own, as a server sends it). What `budgets.pageGzipBytes` limits.
+    const javascriptSize = loadOrder.reduce((total, name) => ({ bytes: total.bytes + chunkReport[name].size.bytes, gzipBytes: total.gzipBytes + chunkReport[name].size.gzipBytes }), { bytes: 0, gzipBytes: 0 });
+    pages[root.id].startupSize = { bytes: javascriptSize.bytes + pages[root.id].stylesheetsSize.bytes, gzipBytes: javascriptSize.gzipBytes + pages[root.id].stylesheetsSize.gzipBytes };
   }
 
   // What the build was made from, so `agent-ui serve` can tell that the sources moved on (build/stamp.mjs).
@@ -154,7 +162,7 @@ export const writeSite = ({ projectRoot, outDir, assetsDir, graph, plan, generat
   const stylesheets = records.flatMap((record) => record.stylesheets);
   const named = alsoStamped.filter((file) => existsSync(resolve(projectRoot, file)));
   const sourceFiles = [...new Set([...modules, ...stylesheets, ...named])];
-  const manifest = { pages, chunks: chunkReport, assetsDir, sources: { files: sourceFiles, hash: stampSources(projectRoot, sourceFiles) } };
+  const manifest = { pages, chunks: chunkReport, assetsDir, basePath, sources: { files: sourceFiles, hash: stampSources(projectRoot, sourceFiles) } };
   writeFileSync(join(outputDirectory, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   return manifest;
 };
@@ -175,6 +183,8 @@ export const formatReport = (manifest) => {
       ].join(' '),
     );
   }
+  lines.push('', 'page                      startup (gzip)   js + css loaded before the page runs');
+  for (const [name, page] of Object.entries(manifest.pages)) lines.push([name.padEnd(25), `${page.startupSize.bytes}B`.padStart(7), `(${page.startupSize.gzipBytes}B)`.padStart(8), `  ${page.chunksLoadedAtStartup.join(', ')}`].join(' '));
   for (const warning of manifest.warnings ?? []) lines.push(`\nwarning: ${warning}`);
   return lines.join('\n');
 };

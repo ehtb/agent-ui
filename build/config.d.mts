@@ -21,9 +21,10 @@ export interface BuildConfig {
   /** Writes a `.map` file next to every chunk. */
   sourceMaps?: boolean;
   minify?: boolean;
-  transform?: ((code: string, context: { file: string; kind: 'javascript' | 'css' }) => string) | null;
+  /** With `sourceMap: true` (sourceMaps is on and the chunk is JavaScript) return `{ code, map }`: the minifier's code and its own source map; otherwise the code. */
+  transform?: ((code: string, context: { file: string; kind: 'javascript' | 'css'; sourceMap: boolean }) => string | { code: string; map: string | object }) | null;
   manualChunks?: Record<string, string[]>;
-  /** Shared chunks smaller than this many bytes of source are folded into a bigger shared chunk (default 4096; 0 turns it off). */
+  /** Chunks that are not a page's own and are smaller than this many bytes of source are folded into a bigger chunk (default 4096; 0 turns it off). */
   minSharedChunkBytes?: number;
   replaceModules?: Record<string, string>;
   api?: string;
@@ -33,6 +34,10 @@ export interface BuildConfig {
   renderTimeoutMs?: number;
   /** The state a browser may receive: keep the page's namespaces and keys, leave a server-only key out. It cannot add a namespace or key. The markup is rendered from the full state. */
   stateForBrowser?: ((state: Record<string, any>, request: RequestContext | null) => Record<string, any> | Promise<Record<string, any>>) | null;
+  /** The path the site is served below, for example '/shop' (docs/BUILD.md, "A site below a base path"). Default: the root. */
+  basePath?: string;
+  /** Limits that turn a page over them into an error (docs/BUILD.md, "Budgets"): pageGzipBytes fails the build; the others are problems of `agent-ui check`. */
+  budgets?: { pageGzipBytes?: number; stateBytes?: number; elements?: number; listRows?: number };
 }
 /** The configuration after loadConfig: the user's options plus the pages, the entries the bundler builds from them and the configuration file they came from. */
 export interface LoadedConfig extends BuildConfig {

@@ -1,7 +1,8 @@
 /** A real browser for tests: Chrome, headless, driven over the DevTools protocol (no dependency). See the top of browser.mjs. */
 export interface BrowserPage {
   evaluate(expression: string): Promise<any>;
-  until(expression: string, what: string): Promise<void>;
+  /** Waits until the expression is true in the page; `timeout` defaults to 8000 ms. */
+  until(expression: string, what: string, options?: { timeout?: number }): Promise<void>;
   report: { loads: string[]; console: string[] };
   send(method: string, params?: Record<string, unknown>): Promise<any>;
   click(selector: string): Promise<void>;

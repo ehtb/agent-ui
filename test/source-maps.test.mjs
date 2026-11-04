@@ -129,12 +129,91 @@ test('without sourceMaps there is no map, no pointer, and a production build is 
   }
 });
 
-test('sourceMaps and transform cannot be combined: the config check and the build both say so', () => {
-  assert.match(checkConfig({ sourceMaps: true, transform: (code) => code })[0], /"sourceMaps": cannot be combined with "transform".*Set sourceMaps: false and have the minifier write its own map/);
-  assert.match(checkConfig({ sourceMaps: 'yes' })[0], /"sourceMaps": must be true or false/);
+// A minifier for the tests, with no dependency: it drops empty lines and indents the others by two spaces, and writes its own map
+// (from its output to the chunk it was given) with a column and a name for every `second`, the way a real minifier does.
+const reflow = (code) => {
+  const inputLines = code.split('\n');
+  const kept = inputLines.map((text, line) => ({ text, line })).filter(({ text }) => text.trim());
+  let previous = [0, 0, 0];
+  const mappings = kept.map(({ text, line }) => {
+    const segments = [[2, 0, line, 0]];
+    const column = text.indexOf('second');
+    if (column >= 0) segments.push([2 + column, 0, line, column, 0]);
+    let previousColumn = 0;
+    return segments.map((segment) => {
+      let encoded = encodeVlq(segment[0] - previousColumn);
+      previousColumn = segment[0];
+      encoded += encodeVlq(segment[1] - previous[0]) + encodeVlq(segment[2] - previous[1]) + encodeVlq(segment[3] - previous[2]);
+      previous = [segment[1], segment[2], segment[3]];
+      if (segment.length === 5) encoded += encodeVlq(0); // names[0], relative to nothing before it in this small map
+      return encoded;
+    }).join(',');
+  }).join(';');
+  return { code: `${kept.map(({ text }) => `  ${text}`).join('\n')}\n`, map: JSON.stringify({ version: 3, sources: ['<stdin>'], names: ['second'], mappings }) };
+};
+// Per output line, every segment: { column, source, line (from 1), sourceColumn, name? }.
+const decodeSegments = (map) => {
+  const state = [0, 0, 0, 0];
+  return map.mappings.split(';').map((lineText) => {
+    let column = 0;
+    return lineText.split(',').filter(Boolean).map((text) => {
+      const numbers = decodeVlq(text);
+      column += numbers[0];
+      numbers.slice(1).forEach((number, index) => { state[index] += number; });
+      return { column, source: state[0], line: state[1] + 1, sourceColumn: state[2], ...(numbers.length === 5 && { name: map.names[state[3]] }) };
+    });
+  });
+};
+
+for (const minify of [false, true]) {
+  test(`sourceMaps with a transform (minify: ${minify}): the transform returns its own map, and the map written points at the source files`, () => {
+    const { projectRoot, cleanup } = makeProject();
+    const calls = [];
+    try {
+      const transform = (code, context) => {
+        calls.push(context);
+        return reflow(code);
+      };
+      assert.deepEqual(checkConfig({ sourceMaps: true, transform }), [], 'the two options go together');
+      build({ projectRoot, entries: [{ name: 'main', path: 'main.js' }], outDir: 'out', hash: false, minify, sourceMaps: true, transform });
+      assert.deepEqual(calls, [{ file: 'main', kind: 'javascript', sourceMap: true }]);
+      const code = readFileSync(join(projectRoot, 'out/assets/main.js'), 'utf8');
+      const map = JSON.parse(readFileSync(join(projectRoot, 'out/assets/main.js.map'), 'utf8'));
+      assert.ok(code.endsWith('//# sourceMappingURL=main.js.map\n'), 'the build adds the pointer after the transform');
+      assert.ok(!code.includes('\n\n'), 'the code written is the transform\'s');
+      assert.deepEqual(map.sources, ['lib.js', 'main.js']);
+      assert.deepEqual(map.sourcesContent, [files['lib.js'], files['main.js']]);
+
+      const outputLines = code.split('\n');
+      const segments = decodeSegments(map);
+      const lineOf = (text) => outputLines.findIndex((line) => line.includes(text));
+      assert.deepEqual(segments[lineOf('const second')][0], { column: 2, source: 0, line: 7, sourceColumn: 0 });
+      assert.deepEqual(segments[lineOf('globalThis.result')][0], { column: 2, source: 1, line: 9, sourceColumn: 0 });
+      // A position inside a line keeps its column in the output and its name; in the source it is the start of the line it names.
+      const named = segments[lineOf('const second')][1];
+      assert.deepEqual(named, { column: outputLines[lineOf('const second')].indexOf('second'), source: 0, line: 7, sourceColumn: 0, name: 'second' });
+      // Lines the bundler wrote itself (the module wrapper) are in no source file and are not mapped.
+      assert.deepEqual(segments[lineOf('const module_lib = (() => {')], []);
+    } finally {
+      cleanup();
+    }
+  });
+}
+
+test('a transform\'s result has one form for each call: the code, or { code, map } when sourceMap is true', () => {
   const { projectRoot, cleanup } = makeProject();
+  const buildWith = (options) => () => build({ projectRoot, entries: [{ name: 'main', path: 'main.js' }], outDir: 'out', hash: false, ...options });
+  const rejects = (options, pattern) => assert.throws(buildWith(options), (error) => error instanceof BuildError && pattern.test(error.message), String(pattern));
   try {
-    assert.throws(() => build({ projectRoot, entries: [{ name: 'main', path: 'main.js' }], outDir: 'out', sourceMaps: true, transform: (code) => code }), (error) => error instanceof BuildError && /sourceMaps cannot be combined with transform/.test(error.message));
+    assert.match(checkConfig({ sourceMaps: 'yes' })[0], /"sourceMaps": must be true or false/);
+    rejects({ sourceMaps: true, transform: (code) => code }, /transform \(javascript of chunk "main"\): returned string, and with sourceMap: true \(sourceMaps is on\) it must return \{ code, map \}.*Write transform:/);
+    rejects({ transform: (code) => ({ code, map: '{}' }) }, /transform \(javascript of chunk "main"\): returned object, and with sourceMap: false it must return the code as a string/);
+    rejects({ sourceMaps: true, transform: (code) => ({ code, map: reflow(code).map, mapping: 1 }) }, /unknown key "mapping" in the result\. Return \{ code, map \} and nothing else/);
+    rejects({ sourceMaps: true, transform: (code) => ({ code: 7, map: reflow(code).map }) }, /"code" must be the minified code as a string/);
+    rejects({ sourceMaps: true, transform: (code) => ({ code, map: 'not json' }) }, /"map" is a string but not JSON/);
+    rejects({ sourceMaps: true, transform: (code) => ({ code, map: { version: 2, mappings: '' } }) }, /"map" must be a source map of version 3/);
+    rejects({ sourceMaps: true, transform: (code) => ({ code, map: { version: 3, mappings: '', sources: ['a.js', 'b.js'] } }) }, /"map" names 2 sources, and a transform of one chunk has one input/);
+    rejects({ sourceMaps: true, transform: (code) => ({ code: `${code}//# sourceMappingURL=x.map\n`, map: reflow(code).map }) }, /ends with its own "\/\/# sourceMappingURL=" comment.*sourcemap: 'external'/);
   } finally {
     cleanup();
   }

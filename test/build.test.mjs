@@ -432,7 +432,7 @@ test('development build: readable, validator in its own chunk and active; produc
   const dev = buildWith({ ...base({ dev: true }), projectRoot: repositoryRoot, outDir: 'test/.output-dev' });
   const production = buildWith({ ...base({ dev: false }), projectRoot: repositoryRoot, outDir: 'test/.output-production' });
   try {
-    assert.deepEqual([...dev.chunks.validator.modules].sort(), ['src/error-messages.js', 'src/errors.js', 'src/grammar.js', 'src/handler-checks.js', 'src/messages.js', 'src/namespaces.js', 'src/runtime-checks.js', 'src/spec-core.js', 'src/validate.js']);
+    assert.deepEqual([...dev.chunks.validator.modules].sort(), ['src/base-path-checks.js', 'src/error-messages.js', 'src/errors.js', 'src/grammar.js', 'src/handler-checks.js', 'src/messages.js', 'src/namespaces.js', 'src/runtime-checks.js', 'src/spec-core.js', 'src/validate.js']);
     // In development the runtime chunk is the framework's own modules and nothing else, so the hot swap never evaluates src/pages.js twice (build/presets.mjs).
     assert.ok(dev.chunks['agent-ui'].modules.includes('src/ui.js') && dev.chunks['agent-ui'].modules.every((path) => path.startsWith('src/')), dev.chunks['agent-ui'].modules.join(', '));
     assert.ok(dev.pages.site.chunksLoadedAtStartup.includes('validator'));
@@ -555,6 +555,105 @@ test('a chunk that is not small keeps its own file', () => {
   try {
     const { chunks } = build(threePageConfig(project.projectRoot, { minSharedChunkBytes: 100 }));
     assert.deepEqual(Object.keys(chunks).sort(), ['a', 'b', 'c', 'shared-a-b', 'shared-a-b-c']); // a-and-c is small and folded, a-and-b is not
+  } finally {
+    project.cleanup();
+  }
+});
+
+// ---- the framework, each package and the app are separate chunks ----------------------------------------------------
+
+// Two pages that use the framework (linked as the package, like an installed copy), two packages and code of their own.
+const layeredProject = () => {
+  const project = createProject({
+    'node_modules/big/package.json': '{"name":"big","version":"1.0.0","type":"module","exports":{".":"./index.js"}}',
+    'node_modules/big/index.js': `export const big = ${JSON.stringify('b'.repeat(5000))};`,
+    'node_modules/@scope/both/package.json': '{"name":"@scope/both","version":"1.0.0","type":"module","exports":{".":"./index.js","./extra.js":"./extra.js"}}',
+    'node_modules/@scope/both/index.js': 'export const both = "both";',
+    'node_modules/@scope/both/extra.js': 'export const extra = "extra";',
+    'lib/shared.js': 'export const shared = "shared";',
+    'a/main.js': [
+      'import { memoizeItem } from "@ehtb/agent-ui/memoize";',
+      'import { big } from "big";',
+      'import { both } from "@scope/both";',
+      'import { extra } from "@scope/both/extra.js";',
+      'import { shared } from "../lib/shared.js";',
+      'globalThis.results.a = [typeof memoizeItem, big.length, both, extra, shared].join();',
+    ].join('\n'),
+    'b/main.js': 'import { memoizeItem } from "@ehtb/agent-ui/memoize";\nimport { both } from "@scope/both";\nimport { shared } from "../lib/shared.js";\nglobalThis.results.b = [typeof memoizeItem, both, shared].join();',
+  });
+  mkdirSync(join(project.projectRoot, 'node_modules/@ehtb'), { recursive: true });
+  symlinkSync(repositoryRoot, join(project.projectRoot, 'node_modules/@ehtb/agent-ui'), 'junction');
+  return project;
+};
+const layeredConfig = (projectRoot, overrides = {}) => ({ projectRoot, entries: [{ name: 'a', path: 'a/main.js' }, { name: 'b', path: 'b/main.js' }], outDir: 'out', ...overrides });
+const modulesOf = (chunk) => chunk.modules.map((path) => path.replace(/^.*\/src\//, 'src/'));
+
+test('the framework\'s modules, each package and the app\'s own code are chunks of their own, so an edit to the app leaves the others cached', async () => {
+  const project = layeredProject();
+  Object.assign(globalThis, { results: {} });
+  try {
+    const first = build(layeredConfig(project.projectRoot, { minSharedChunkBytes: 0 }));
+    const { chunks, pages } = first;
+    assert.deepEqual(Object.keys(chunks).sort(), ['a', 'agent-ui-a-b', 'b', 'shared-a-b', 'vendor-big', 'vendor-scope-both-a', 'vendor-scope-both-a-b']);
+    assert.deepEqual(modulesOf(chunks['agent-ui-a-b']), ['src/messages.js', 'src/memoize.js']);
+    assert.match(chunks['agent-ui-a-b'].reason, /^framework modules used by a, b$/);
+    assert.deepEqual(chunks['shared-a-b'].modules, ['lib/shared.js']);
+    assert.deepEqual(chunks['vendor-big'].modules, ['node_modules/big/index.js']);
+    assert.match(chunks['vendor-big'].reason, /^package big, used by a$/);
+    // A package that pages use different parts of is one chunk per set of pages, named by the pages.
+    assert.deepEqual(chunks['vendor-scope-both-a-b'].modules, ['node_modules/@scope/both/index.js']);
+    assert.deepEqual(chunks['vendor-scope-both-a'].modules, ['node_modules/@scope/both/extra.js']);
+    assert.deepEqual(chunks.a.modules, ['a/main.js']);
+    assert.deepEqual(new Set(pages.b.chunksLoadedAtStartup), new Set(['agent-ui-a-b', 'vendor-scope-both-a-b', 'shared-a-b', 'b']));
+    for (const page of ['a', 'b']) await import(pathToFileURL(join(project.projectRoot, 'out', chunks[page].javascript)).href);
+    assert.deepEqual(globalThis.results, { a: 'function,5000,both,extra,shared', b: 'function,both,shared' });
+
+    project.write('lib/shared.js', 'export const shared = "changed";');
+    const after = build(layeredConfig(project.projectRoot, { minSharedChunkBytes: 0 })).chunks;
+    assert.notEqual(after['shared-a-b'].javascript, chunks['shared-a-b'].javascript);
+    for (const name of ['agent-ui-a-b', 'vendor-big', 'vendor-scope-both-a', 'vendor-scope-both-a-b']) assert.equal(after[name].javascript, chunks[name].javascript, `${name} keeps its file`);
+  } finally {
+    delete globalThis.results;
+    project.cleanup();
+  }
+});
+
+test('small chunks fold into a chunk of their own layer or the app\'s, never into the framework\'s or a package\'s, and run in import order', async () => {
+  const project = layeredProject();
+  Object.assign(globalThis, { results: {} });
+  try {
+    const { chunks } = build(layeredConfig(project.projectRoot, { minSharedChunkBytes: 1_000_000 }));
+    const layerOf = (path) => (path.includes('/src/') ? 'framework' : path.startsWith('node_modules/') ? 'vendor' : 'app');
+    for (const [name, chunk] of Object.entries(chunks)) {
+      const layers = new Set(chunk.modules.map(layerOf));
+      if (layers.has('framework') || layers.has('vendor')) assert.ok(!layers.has('app') || name === 'a' || name === 'b' || name.startsWith('shared-'), `${name} holds ${chunk.modules.join(', ')}`);
+    }
+    // The page's own chunk took in its small package parts: the package comes before the page code that imports it.
+    assert.ok(chunks.a.modules.indexOf('node_modules/@scope/both/extra.js') < chunks.a.modules.indexOf('a/main.js'), chunks.a.modules.join(', '));
+    assert.match(chunks.a.reason, /\(with package big\)/); // big had already taken in the small part of @scope/both
+    assert.ok(chunks['shared-a-b'], 'the app\'s shared code is not folded into the framework chunk of the same pages');
+    for (const page of ['a', 'b']) await import(pathToFileURL(join(project.projectRoot, 'out', chunks[page].javascript)).href);
+    assert.deepEqual(globalThis.results, { a: 'function,5000,both,extra,shared', b: 'function,both,shared' });
+  } finally {
+    delete globalThis.results;
+    project.cleanup();
+  }
+});
+
+test('two packages that import each other become one chunk for the pages that use them', () => {
+  const project = createProject({
+    'node_modules/ping/package.json': '{"name":"ping","version":"1.0.0","type":"module","exports":{".":"./index.js","./tail.js":"./tail.js"}}',
+    'node_modules/ping/index.js': 'import { pong } from "pong";\nexport const ping = () => `ping ${pong}`;',
+    'node_modules/ping/tail.js': 'export const tail = "!";',
+    'node_modules/pong/package.json': '{"name":"pong","version":"1.0.0","type":"module","exports":{".":"./index.js"}}',
+    'node_modules/pong/index.js': 'import { tail } from "ping/tail.js";\nexport const pong = `pong${tail}`;',
+    'main.js': 'import { ping } from "ping";\nglobalThis.result = ping();',
+  });
+  try {
+    const { chunks } = build({ projectRoot: project.projectRoot, entries: [{ name: 'main', path: 'main.js' }], outDir: 'out', minSharedChunkBytes: 0 });
+    assert.deepEqual(Object.keys(chunks).sort(), ['main', 'vendor-main']);
+    assert.deepEqual(chunks['vendor-main'].modules, ['node_modules/ping/tail.js', 'node_modules/pong/index.js', 'node_modules/ping/index.js']);
+    assert.match(chunks['vendor-main'].reason, /^packages ping, pong, used by main \(one chunk: they import each other\)$/);
   } finally {
     project.cleanup();
   }

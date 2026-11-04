@@ -64,6 +64,8 @@ export interface PageContent {
   pending?: SpecNode;
   /** The content of the shell page.js names: { name, view }, the view holding pageSlot() once. */
   shell?: ShellContent;
+  /** A page with parameters: the URLs `agent-ui check` renders and `agent-ui build --static` writes, or a function (possibly async) that returns them. view.js runs only in Node. */
+  paths?: string[] | (() => string[] | Promise<string[]>);
 }
 export interface ShellContent {
   name: string;
@@ -91,7 +93,7 @@ export type PageOptions = { path: string; shell?: ShellContent } & ({ view: Spec
 export function contentOf(viewModule: Record<string, unknown>, file: string): { view: SpecNode; layout?: (content: SpecNode) => SpecNode; pending?: SpecNode; shell?: ShellContent };
 export function definePage(page: Page, options: PageOptions): PageDefinition;
 /** What a generated browser entry calls: registers the page under `url` (its own file) and starts it when it is the first in the document. */
-export function startPage(page: Page, options: { path: string; dev: boolean; url?: string; spec?: SpecNode; view?: SpecNode; layout?: (content: SpecNode) => SpecNode; pending?: SpecNode; shell?: ShellContent }): PageDefinition;
+export function startPage(page: Page, options: { path: string; dev: boolean; basePath?: string; url?: string; spec?: SpecNode; view?: SpecNode; layout?: (content: SpecNode) => SpecNode; pending?: SpecNode; shell?: ShellContent }): PageDefinition;
 /** The definition registered by the entry file at `url`, if that file was loaded. */
 export function findEntry(url: string): PageDefinition | undefined;
 /** What runs in this document: the page's definition and app, its shell app (null without a shell) and the element the page lives in; null before the first page started. Soft navigation keeps it current. */

@@ -37,7 +37,7 @@ test('--static refuses a project with a page that has parameters, before it writ
     project.write('pages/item/[id]/view.js', "import { p } from '@ehtb/agent-ui/spec';\nexport const view = p({ id: 'item' }, 'item');\n");
     const refused = run(project.root, 'build', '--static');
     assert.equal(refused.status, 1);
-    assert.match(refused.stderr, /page "\/item\/:id".*has parameters, so a static site has no single file for it/);
+    assert.match(refused.stderr, /page "\/item\/:id".*has parameters and lists no `paths`, so a static site has no file for it\. Export the URLs to write from its view\.js/);
     assert.equal(existsSync(join(project.root, 'dist')), false, 'nothing was built');
   } finally {
     project.cleanup();

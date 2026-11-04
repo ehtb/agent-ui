@@ -8,7 +8,10 @@
 //   explain  print the one valid form of a recipe or a part of the grammar       cli/explain.mjs
 //   init     write the instructions for agents into the project's AGENTS.md      cli/init.mjs
 // Options after the command are passed on unchanged (--config=<file>, --port=<n>, ...); see docs/BUILD.md.
+import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const COMMANDS = {
   build: 'build.mjs',
@@ -20,7 +23,31 @@ const COMMANDS = {
   init: 'init.mjs',
 };
 
+const USAGE = `agent-ui ${manifest.version}
+
+Usage: agent-ui <command> [options]
+
+Commands:
+  build    production build (add --dev for a readable development build)
+  dev      development server with hot reload
+  serve    serve the built site: pages rendered per request, the API, the files
+  check    render every page in development mode and report problems
+  schema   write the JSON Schema of the spec grammar
+  explain  print the one valid form of a recipe or a part of the grammar
+  init     write the instructions for agents into the project's AGENTS.md
+
+Options after the command are passed on unchanged (--config=<file>, --port=<n>, ...).
+See README.md ("CLI Reference") and docs/BUILD.md.`;
+
 const [command, ...rest] = process.argv.slice(2);
+if (command === '--version' || command === '-v') {
+  console.log(manifest.version);
+  process.exit(0);
+}
+if (command === '--help' || command === '-h' || command === 'help' || !command || rest.includes('--help') || rest.includes('-h')) {
+  console.log(USAGE);
+  process.exit(0);
+}
 const script = Object.hasOwn(COMMANDS, command) ? COMMANDS[command] : undefined;
 if (!script) {
   console.error(`${command ? `unknown command "${command}"` : 'no command given'}. Commands: ${Object.keys(COMMANDS).join(', ')}`);

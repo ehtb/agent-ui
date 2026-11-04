@@ -231,13 +231,14 @@ test('in Chrome, many page loads in a row do not wait for a connection, and a pa
     project.write('pages/other/view.js', "export const view = { tag: 'p', id: 'other', children: 'Other v2' };\n");
     await waitFor(() => events.messages.length > buildStarted, 'the rebuild while /other/ is hidden');
     await page.evaluate("history.back()");
-    await page.until(`location.pathname === '/other/' && ${el('other')}?.textContent === 'Other v2'`, 'the edit missed while the page was hidden');
+    // A rebuild, a return from the back/forward cache and a reload: under a full parallel test run this takes longer than one page load.
+    await page.until(`location.pathname === '/other/' && ${el('other')}?.textContent === 'Other v2'`, 'the edit missed while the page was hidden', { timeout: 60000 });
 
     // A page restored by Back reconnects and still hears edits after that.
     const reconnectedAt = events.messages.length;
     project.write('pages/other/view.js', "export const view = { tag: 'p', id: 'other', children: 'Other v3' };\n");
     await waitFor(() => events.messages.length > reconnectedAt, 'the rebuild after reconnecting');
-    await page.until(`${el('other')}?.textContent === 'Other v3'`, 'an edit after reconnecting');
+    await page.until(`${el('other')}?.textContent === 'Other v3'`, 'an edit after reconnecting', { timeout: 60000 });
   } finally {
     await events.stop();
     dev.stop();

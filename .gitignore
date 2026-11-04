@@ -7,6 +7,7 @@ coverage/
 
 # Dependencies
 node_modules/
+package-lock.json
 .pnpm-store/
 .yarn/
 
@@ -34,3 +35,4 @@ Thumbs.db
 
 # Agent tool state (local, per-machine)
 .claude/
+.serena/

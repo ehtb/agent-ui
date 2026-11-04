@@ -13,3 +13,7 @@ export function outlineById(outline: OutlineNode[], id: string): OutlineNode | u
 /** Throws with the messages of `ui.errors` when the app reported any. */
 export function assertNoErrors(ui: AppApi): void;
 export function assertRepeatable(ui: AppApi, actionName: string, args?: Record<string, unknown>): Promise<void>;
+/** What one action costs, counted (not timed): DOM writes on the test DOM, state keys replaced, derived values changed, elements shown. */
+export function measureAction(ui: AppApi, actionName: string, args?: Record<string, unknown>): Promise<{ domWrites: number; effectRuns: number; stateChanged: string[]; derivedChanged: string[]; elements: number; elementsBefore: number }>;
+/** Throws when an action costs more than its limits (upper bounds on domWrites, effectRuns, stateChanged, derivedChanged, elements); returns the measurement. */
+export function assertCost(ui: AppApi, actionName: string, args: Record<string, unknown> | undefined, limits: { domWrites?: number; effectRuns?: number; stateChanged?: number; derivedChanged?: number; elements?: number }): Promise<ReturnType<typeof measureAction> extends Promise<infer T> ? T : never>;

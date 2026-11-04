@@ -100,3 +100,14 @@ export const figure: ElementBuilder;
 export const figcaption: ElementBuilder;
 export const progress: ElementBuilder;
 export const time: ElementBuilder;
+/** SVG for icons and simple drawings: shapes stand inside an svg; an svg has aria-label (with role: 'img') or 'aria-hidden': 'true'. */
+export const svg: ElementBuilder;
+export const g: ElementBuilder;
+export const path: ElementBuilder;
+export const circle: ElementBuilder;
+export const ellipse: ElementBuilder;
+export const rect: ElementBuilder;
+export const line: ElementBuilder;
+export const polyline: ElementBuilder;
+export const polygon: ElementBuilder;
+export const use: ElementBuilder;

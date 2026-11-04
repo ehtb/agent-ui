@@ -146,6 +146,10 @@ export interface AppApi {
    * observer.removed(node) when a node leaves it. Returns a function that stops observing. @ehtb/agent-ui/mount-element is built on this.
    */
   observeElements(observer: { added(element: Element): void; removed(node: Node): void }): () => void;
+  /** The plugin that writes a prop the grammar leaves to a plugin (`follow`: @ehtb/agent-ui/follow) takes its writes, also those made before it was installed. */
+  handleProperty(name: 'follow', handler: (element: Element, value: unknown) => void): void;
+  /** Called before every reorder of a list with the row elements that stay; the function it returns runs after the rows are placed (@ehtb/agent-ui/moves). Returns a function that removes it. */
+  onReorder(handler: (rowElements: Element[]) => void | (() => void) | null): () => void;
   /** `keys` are qualified; the callback receives { "namespace.key": value }. */
   watch(keys: string[], callback: (values: Record<string, any>) => void, options?: { owns?: { where: string; keys: string[]; allowedActions: string[]; message: (key: string) => string } }): () => void;
   tree(): Array<{ id: string; key?: string; tag: string; label: string; value?: string; checked?: boolean; href?: string; on: Record<string, string | string[]> }>;
@@ -194,9 +198,13 @@ export interface AppOptions {
   dev: boolean;
   /** True makes the browser console show what the app does: the state, and every action with what it changed (docs/API.md, "The debug console"). Default false. */
   debug?: boolean;
+  /** The path the site is served below, for example '/shop' (docs/BUILD.md, "A site below a base path"): written before every root-absolute URL the app puts in the page. Default '' (the root). Pages get it from the build. */
+  basePath?: string;
 }
 
 export function app(options: AppOptions): AppApi;
+/** How many times effects (bindings, derived values, watches) have run in this process: the counter measureAction reads. */
+export function countEffectRuns(): number;
 export function validate(spec: SpecNode, context: { namespaces?: Namespaces; initialState?: StateSnapshot }): string[];
 /** Lays partial states over each other, namespace by namespace and key by key; later ones win. */
 export function mergeInitialState(...partialStates: Array<StateSnapshot | null | undefined>): StateSnapshot;
@@ -215,7 +223,11 @@ export const grammar: Readonly<{
   nodeKeys: { element: string[]; each: string[]; when: string[] };
   handlerOptions: string[];
   attributes: string[];
-  attributePrefixes: string[]; // data-* and aria-* names are accepted when something follows the prefix and the name has no space, quote, <, >, / or =
+  attributePrefixes: string[];
+  /** The SVG tags (also in `tags`), drawn in the SVG namespace. */
+  svgTags: string[];
+  /** The attributes that belong on an SVG tag only (also in `attributes`). */
+  svgAttributes: string[]; // data-* and aria-* names are accepted when something follows the prefix and the name has no space, quote, <, >, / or =
 }>;
 
 export function isPlainObject(value: unknown): value is Record<string, unknown>;
