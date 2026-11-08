@@ -14,7 +14,10 @@ import { toPosixPath } from './import-path.mjs';
 const SUPPORTED_EXTENSIONS = ['.js', '.mjs', '.css'];
 
 // `replacements` maps a module path to another file whose source is used instead ({ 'src/validate.js': 'build/stubs/validate-omitted.js' }).
-export const buildModuleGraph = ({ projectRoot: givenRoot, entries, replacements = {} }) => {
+// With `problems` (an array) the graph does not throw on a module the bundler refuses: it records the message, leaves that module's
+// dependencies unvisited and keeps going, so one read finds every problem (`agent-ui check`). Without it the first problem throws,
+// which is what a build wants.
+export const buildModuleGraph = ({ projectRoot: givenRoot, entries, replacements = {}, problems = null }) => {
   // Real path, because package files are found by real path; module paths are relative to this root.
   const projectRoot = realpathSync(givenRoot);
   const modules = new Map();
@@ -63,15 +66,33 @@ export const buildModuleGraph = ({ projectRoot: givenRoot, entries, replacements
     return record;
   };
 
+  // A problem the bundler refuses, in the form the reader sees it: recorded when collecting, thrown otherwise. The same message
+  // can be reached from more than one entry, so it is reported once.
+  const report = (error) => {
+    if (!problems) throw error;
+    if (!(error instanceof BuildError)) throw error;
+    if (!problems.includes(error.message)) problems.push(error.message);
+  };
+
   const visit = (path, trail) => {
     const state = visitState.get(path);
     if (state === 'done') return;
     if (state === 'visiting') {
       const cycle = [...trail.slice(trail.indexOf(path)), path].join(' -> ');
-      throw new BuildError(`import cycle: ${cycle} (cycles are not supported: imports are bound once). Move what both modules need into a third module that they import`);
+      report(new BuildError(`import cycle: ${cycle} (cycles are not supported: imports are bound once). Move what both modules need into a third module that they import`));
+      return;
     }
     visitState.set(path, 'visiting');
-    for (const dependency of loadModule(path).staticDependencies) visit(dependency, [...trail, path]);
+    let record;
+    try {
+      record = loadModule(path);
+    } catch (error) {
+      // The module itself is what is wrong: no dependency of it can be read or trusted, so it is left out of `order`.
+      visitState.set(path, 'done');
+      report(error);
+      return;
+    }
+    for (const dependency of record.staticDependencies) visit(dependency, [...trail, path]);
     visitState.set(path, 'done');
     order.push(path);
   };

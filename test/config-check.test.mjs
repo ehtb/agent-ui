@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { checkConfig } from '../build/config-check.mjs';
@@ -75,6 +75,31 @@ test('loadConfig throws one error listing every problem, and fills in the defaul
     assert.deepEqual(good.entries.map(({ name, path }) => [name, path]), [['about', '.agent-ui/about/main.js'], ['index', '.agent-ui/index/main.js']]);
     assert.ok(existsSync(join(project, '.agent-ui/about/main.js')) && existsSync(join(project, '.agent-ui/.gitignore')));
     await assert.rejects(() => loadConfig({ root: project, file: 'bad.config.mjs' }), (error) => /^bad\.config\.mjs has 2 problems:\n {2}build config key "outDirr".*\n {2}build config key "minfy".*Did you mean "minify"\?/s.test(error.message));
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig rewrites a generated file only when its text changed, and removes what a previous load left', async () => {
+  const project = mkdtempSync(join(tmpdir(), 'agent-ui-generated-'));
+  try {
+    mkdirSync(join(project, 'pages/about'), { recursive: true });
+    writeFileSync(join(project, 'build.config.mjs'), 'export default { outDir: "dist" };');
+    writeFileSync(join(project, 'pages/page.js'), 'export const page = {};');
+    writeFileSync(join(project, 'pages/view.js'), 'export const view = { tag: "p" };');
+    writeFileSync(join(project, 'pages/about/page.js'), 'export const page = {};');
+    writeFileSync(join(project, 'pages/about/view.js'), 'export const view = { tag: "p" };');
+    await loadConfig({ root: project, mode: { dev: true } });
+    const entry = join(project, '.agent-ui/index/main.js');
+    const written = statSync(entry).mtimeMs;
+    await new Promise((resolveTick) => setTimeout(resolveTick, 20)); // so a rewrite would have a later mtime even on a coarse clock
+    await loadConfig({ root: project, mode: { dev: true } });
+    assert.equal(statSync(entry).mtimeMs, written, 'an unchanged entry is left untouched');
+
+    rmSync(join(project, 'pages/about'), { recursive: true });
+    await loadConfig({ root: project, mode: { dev: true } });
+    assert.equal(existsSync(join(project, '.agent-ui/about')), false, 'the folder of a page that is gone is removed');
+    assert.ok(existsSync(entry), 'the page that is still there keeps its entry');
   } finally {
     rmSync(project, { recursive: true, force: true });
   }

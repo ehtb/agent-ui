@@ -153,6 +153,31 @@ test('an event in the shell reaches the shell app', () => {
   assert.equal(outer.state().frame.clicks, 1);
 });
 
+test('a click whose button the page removed before it reached the shell is not run by the shell', async () => {
+  const outerRoot = createRoot();
+  const outer = app({ dev: true,
+    namespaces: { frame: { state: { clicks: 0 }, actions: { click: { args: {}, run: (store) => store.set('clicks', store.get('clicks') + 1) } } } },
+    spec: { tag: 'main', children: { tag: 'div', id: 'slot', props: { id: 'app' } } },
+    root: outerRoot,
+  });
+  const slot = findByTag(outerRoot, 'div')[0];
+  const inner = app({ dev: true,
+    namespaces: { dialog: { state: { open: true }, actions: { done: { args: {}, run: (store) => store.set('open', false) } } } },
+    spec: { when: { state: 'dialog.open' }, children: { tag: 'button', id: 'done', on: { click: ['dialog.done', {}] }, children: 'Done' } },
+    root: slot,
+  });
+  const done = findByTag(slot, 'button')[0];
+  // An effect of the page removes the button at once, as closing the dialog it belongs to does; the click keeps bubbling to the shell.
+  inner.onAction(({ name }) => name === 'dialog.done' && done.remove());
+  fireEvent(done, 'click');
+  await inner.settle();
+  assert.equal(inner.state().dialog.open, false);
+  assert.deepEqual(inner.log.map(([name]) => name), ['dialog.done']);
+  assert.equal(outer.state().frame.clicks, 0);
+  assert.deepEqual(outer.log, []);
+  assert.deepEqual(outer.errors, [], "the shell did not run the page's action");
+});
+
 test('the shell\'s tree and outline leave out what belongs to the page inside it', () => {
   const { outer, inner } = nested();
   assert.deepEqual(outer.tree().map((entry) => entry.id), ['frame-button']);

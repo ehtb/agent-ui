@@ -20,8 +20,9 @@
 //   shells/<name>.js   the shell's finished content as data, imported by the entries of the pages that use it, so it lands in a chunk they share
 // and, for every file in the CSS import graph:
 //   styles/<name>.js   a browser-only module that imports its @imports and then its CSS, imported by the entries that need it
-// The directory is rewritten on every load and ignores itself (.gitignore): it is output, never edit it.
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+// The directory holds only what the last load generated, ignores itself (.gitignore) and is output, never edited. A file is
+// written again only when its text changed, so a second load leaves it untouched.
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { fail } from '../src/messages.js';
@@ -30,6 +31,7 @@ import { compileUrlPattern, sortBySpecificity } from '../src/url-pattern.js';
 import { validate } from '../src/validate.js';
 import { writeStyleModules } from './css-graph.mjs';
 import { importPath } from './import-path.mjs';
+import { writeFileIfChanged } from './write-file.mjs';
 
 export const PAGES_DIRECTORY = 'pages';
 export const GENERATED_DIRECTORY = '.agent-ui';
@@ -111,6 +113,23 @@ const entryText = (page, imports, call, { globalStylesheet, pageStyle, toProject
 // and builds the spec itself, because `agent-ui dev` renders nothing ahead and a page module imported in Node would go stale
 // between rebuilds. A production build evaluates each page once in Node and writes the finished spec as data (spec.js),
 // which is what the browser entry imports instead.
+
+// Removes what a previous load wrote and this one did not: the folder of a page that is gone, a shell no page uses, the files of a
+// production build when a command regenerated them for development. Directories left empty go with it.
+const pruneGenerated = (directory, keep) => {
+  for (const item of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, item.name);
+    if (item.isDirectory()) {
+      pruneGenerated(path, keep);
+      if (!readdirSync(path).length) rmSync(path, { recursive: true, force: true });
+    } else if (!keep.has(resolve(path))) {
+      rmSync(path, { force: true });
+    }
+  }
+};
+
+const generatedPage = (page) => ({ name: page.name, path: page.path, app: `${GENERATED_DIRECTORY}/${page.name}/app.js`, file: page.file, viewFile: page.viewFile });
+
 let writes = 0; // makes two writes in one millisecond differ
 export const writeGeneratedModules = async (projectRoot, pages, { dev = false, directory = PAGES_DIRECTORY, basePath = '' } = {}) => {
   const generated = resolve(projectRoot, GENERATED_DIRECTORY);
@@ -118,9 +137,13 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
   // stamp of this write, so a second build in one process (a test, a script) evaluates an edited page.js or view.js again. What those
   // two import in turn stays cached: for a change deeper down, start a new process (every `agent-ui` command is one).
   const stamp = `${Date.now()}-${++writes}`;
-  rmSync(generated, { recursive: true, force: true });
   mkdirSync(generated, { recursive: true });
-  writeFileSync(join(generated, '.gitignore'), '*\n');
+  const written = new Set(); // every file of this load, so the ones a previous load left can be removed
+  const writeGenerated = (path, text) => {
+    written.add(resolve(path));
+    writeFileIfChanged(path, text);
+  };
+  writeGenerated(join(generated, '.gitignore'), '*\n');
   // The styles of every page live in a module of their own that every entry imports, so the build puts them in one shared
   // chunk (one CSS file, downloaded once) instead of copying them into every page's stylesheet.
   const globalStylesheet = existsSync(resolve(projectRoot, directory, 'style.css')) ? `${directory}/style.css` : null;
@@ -138,7 +161,8 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
     globalModule: globalStylesheet ? globalModule : null,
     globalStylePath: globalStylesheet,
   });
-  if (globalStylesheet) writeFileSync(globalModule, `// Generated: the styles of every page (${globalStylesheet}). Do not edit.\nimport '${importPath(globalModule, wrapperOf.get(globalStylesheet))}';\n`);
+  for (const wrapper of wrapperOf.values()) written.add(resolve(wrapper)); // written by writeStyleModules, which leaves unchanged text alone
+  if (globalStylesheet) writeGenerated(globalModule, `// Generated: the styles of every page (${globalStylesheet}). Do not edit.\nimport '${importPath(globalModule, wrapperOf.get(globalStylesheet))}';\n`);
   // The entry's last argument: the URL of the entry's own file, which a soft navigation finds in the HTML of the next page.
   // A site below a base path (src/base-path.js) writes it down here, as it writes `dev`: the browser cannot tell it from the address.
   const startCall = (page, content) => `startPage(page, { path: '${page.path}', ${content}, url: import.meta.url, dev: ${dev}${basePath ? `, basePath: '${basePath}'` : ''} });`;
@@ -150,12 +174,12 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
     // The browser entry comes from entryText: a development entry builds the spec from view.js in the browser; a production entry
     // (written after the page was evaluated, below) imports the finished spec and the shell's content as data.
     if (dev) {
-      writeFileSync(
+      writeGenerated(
         join(folder, 'main.js'),
         entryText(page, [`import * as view from '${toProject(page.viewFile)}';`, `import { contentOf, startPage } from '${packageName}/pages';`], startCall(page, `...contentOf(view, '${page.viewFile}')`), { globalStylesheet, pageStyle, toProject }),
       );
     }
-    writeFileSync(
+    writeGenerated(
       join(folder, 'app.js'),
       [
         `// Generated for ${page.file}: what the server and \`agent-ui check\` import. Do not edit; it is rewritten on every build.`,
@@ -185,7 +209,7 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
       // does not carry the validator).
       const problems = validate(module.spec, { namespaces: module.namespaces });
       if (problems.length) fail(page.file, `the finished spec is not valid:\n  ${problems.join('\n  ')}`, 'Fix view.js, its layout or its pending view; a production build checks the spec it ships as data');
-      writeFileSync(
+      writeGenerated(
         join(generated, page.name, 'spec.js'),
         [
           `// Generated for ${page.file}: the page's finished spec (view + layout), as data.`,
@@ -206,13 +230,13 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
         if (!earlier) {
           shells.set(module.shellName, { text, page });
           mkdirSync(join(generated, 'shells'), { recursive: true });
-          writeFileSync(join(generated, 'shells', `${module.shellName}.js`), [`// Generated for the shell "${module.shellName}" (${page.file}): its finished content, as data.`, '// Do not edit; it is rewritten on every build.', `export const shell = ${text};`, ''].join('\n'));
+          writeGenerated(join(generated, 'shells', `${module.shellName}.js`), [`// Generated for the shell "${module.shellName}" (${page.file}): its finished content, as data.`, '// Do not edit; it is rewritten on every build.', `export const shell = ${text};`, ''].join('\n'));
         }
       }
       const toProject = (file) => importPath(join(generated, page.name, 'main.js'), resolve(projectRoot, file));
       const pageStyle = page.stylesheet ? wrapperOf.get(page.stylesheet) : null;
       const shellFile = module.shellContent ? importPath(join(generated, page.name, 'main.js'), join(generated, 'shells', `${module.shellName}.js`)) : null;
-      writeFileSync(
+      writeGenerated(
         join(generated, page.name, 'main.js'),
         entryText(
           page,
@@ -223,9 +247,10 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
       );
     }
   }
+  pruneGenerated(generated, written);
   return {
     entries: pages.map((page) => ({ name: page.name, path: `${GENERATED_DIRECTORY}/${page.name}/main.js` })),
-    pages: pages.map((page) => ({ name: page.name, path: page.path, app: `${GENERATED_DIRECTORY}/${page.name}/app.js`, file: page.file, viewFile: page.viewFile })),
+    pages: pages.map(generatedPage),
     cssOverrides,
     styleSources,
   };
@@ -234,5 +259,7 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
 // What loadConfig adds to a project's configuration: the pages found in the folders, and their generated modules.
 export const expandPages = async (config, projectRoot, options = {}) => {
   const pages = discoverPages(projectRoot);
+  // A deployed server runs what `agent-ui build` generated, from code it may not be able to write.
+  if (options.readOnly) return { ...config, pages: pages.map(generatedPage) };
   return { ...config, ...(await writeGeneratedModules(projectRoot, pages, { ...options, basePath: config.basePath ?? '' })) };
 };

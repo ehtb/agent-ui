@@ -94,7 +94,7 @@ $: unknown key chilren (allowed: tag, props, children, id, classes, on, transiti
 Design priorities, in strict order: performance, accuracy, size.
 
 - **No Virtual DOM:** One state binding compiles to one effect that writes to one DOM property. There is no VDOM diffing overhead. Toggling a row in a list costs exactly three DOM mutations at any list size.
-- **13 KB gzipped:** The production runtime is about 46 KB, 13 KB gzipped, with readable symbols—only comments and whitespace are stripped. A real minifier plugs into `transform`, and source maps (`sourceMaps`) work with or without it: the minifier's map is followed back to your files. Framework code, each npm package and your app's code are separate chunks, so a deploy of your app leaves the rest cached. See `docs/BUILD.md`.
+- **13 KB gzipped:** The production runtime is about 47 KB, 13 KB gzipped, with readable symbols—only comments and whitespace are stripped. A real minifier plugs into `transform`, and source maps (`sourceMaps`) work with or without it: the minifier's map is followed back to your files. Framework code, each npm package and your app's code are separate chunks, so a deploy of your app leaves the rest cached. See `docs/BUILD.md`.
 - **Declared List Shapes:** Lists declare their item schema up front. Typos in `{item}` bindings fail at mount, malformed writes fail in development, and a `validate` hook lets external validators like Zod verify items at runtime.
 
 ---
@@ -256,7 +256,7 @@ Alongside every JavaScript module, the package ships hand-written `.d.ts` and `.
 | docs/DESIGN.md                      | First-principles rationale, trade-offs, and what is intentionally omitted.                                            |
 | docs/RELEASING.md                   | How a release is cut, tested and published.                                                                           |
 | cookbook/                           | Canonical, tested implementations of common UI patterns (accessible via agent-ui explain).                            |
-| examples/README.md                  | Runnable example apps, including examples/shop (code-splitting & bundle budgets) and examples/islands (library mode). |
+| examples/README.md                  | Runnable example apps, including examples/shop (code-splitting & bundle budgets), examples/islands (library mode) and examples/production-server (a dependency-free host). |
 
 ### Contributing & Running Framework Tests
 

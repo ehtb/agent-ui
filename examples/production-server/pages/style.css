@@ -1,0 +1,13 @@
+body { font: 16px/1.5 system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; color: #1f2328; background: #fff; }
+
+h1 { margin-bottom: 0.25rem; }
+
+#hydration-status { padding: 0.5rem 0.75rem; border-left: 3px solid #1a7f37; background: #f2f8f4; font-size: 0.9em; }
+
+#checklist { list-style: none; padding: 0; }
+
+#checklist li { padding: 0.45rem 0; border-bottom: 1px solid #eaeef2; }
+
+#checklist input { margin-right: 0.5rem; }
+
+#progress { font-weight: 600; }

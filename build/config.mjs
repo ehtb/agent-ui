@@ -15,13 +15,14 @@ import { expandPages } from './pages.mjs';
 
 export const DEFAULT_OUT_DIR = 'dist';
 
-// `fresh` re-imports the file even if it was loaded before (the dev server reloads it after every change).
-export const loadConfig = async ({ root = process.cwd(), file = 'build.config.mjs', mode = {}, fresh = false } = {}) => {
+// `fresh` re-imports the file even if it was loaded before (the dev server reloads it after every change). `readOnly` leaves
+// `.agent-ui/` as the build wrote it, for a server that only renders: the configuration then has `pages` but no `entries`.
+export const loadConfig = async ({ root = process.cwd(), file = 'build.config.mjs', mode = {}, fresh = false, readOnly = false } = {}) => {
   const url = pathToFileURL(resolve(root, file)).href + (fresh ? `?t=${Date.now()}` : '');
   const { default: exported } = await import(url);
   const config = typeof exported === 'function' ? exported(mode) : exported;
   const problems = checkConfig(config);
   if (problems.length) throw new Error(`${file} has ${problems.length === 1 ? 'a problem' : `${problems.length} problems`}:\n${problems.map((problem) => `  ${problem}`).join('\n')}`);
   // Every consumer (build, check, ssr, dev) needs an output directory: one default, here.
-  return { outDir: DEFAULT_OUT_DIR, configFile: file, ...(await expandPages(config, root, { dev: Boolean(mode.dev) })) };
+  return { outDir: DEFAULT_OUT_DIR, configFile: file, ...(await expandPages(config, root, { dev: Boolean(mode.dev), readOnly })) };
 };

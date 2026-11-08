@@ -130,6 +130,7 @@ export const definePage = (page, { path, view, layout, pending, spec, shell: she
 
   // The same function the browser entry and the server renderer call. `environment.shell` is the app of the page's shell, when it
   // has one: what the shell reads from this page (page.shell.reads) and where route.go leads start here and end when this app is destroyed.
+  let specChecked = false;
   const create = (environment) => {
     const { root, win, dev, initialState = {}, shell: shellApp, basePath = '' } = environment;
     const pathname = win?.location?.pathname === undefined ? path : withoutBase(basePath, win.location.pathname) ?? path;
@@ -143,7 +144,10 @@ export const definePage = (page, { path, view, layout, pending, spec, shell: she
       basePath,
       debug: environment.debug ?? page.debug, // the server says false; a browser says nothing, and the page decides
       plugins: [...pagePlugins.map((plugin) => plugin({ ...environment, page: { path, head: page.head } })), keepTitleCurrent(win)],
+      // The spec and namespaces of a page never change, so production checks them once. A caller's initial state is checked every time.
+      specChecked: specChecked && !dev && Object.keys(initialState).length === 0,
     });
+    specChecked = true;
     if (shellApp && page.shell) {
       try {
         ui.onDestroy(page.shell.connect(ui, shellApp, win, basePath));

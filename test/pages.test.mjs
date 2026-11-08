@@ -208,3 +208,13 @@ test('a page path is judged by the grammar of URL patterns: its own mistakes are
   assert.doesNotThrow(() => define({}, '/docs/*path'));
   assert.doesNotThrow(() => define({}, '/event/:id'));
 });
+
+test('production checks the spec of a page once, and an initial state from a caller every time', () => {
+  const definition = define({ namespaces: { note: { state: { text: '' } } } });
+  const make = (dev, initialState) => definition.create({ root: createRoot(), win: createWindow('/'), dev, ...(initialState && { initialState }) });
+  make(false).destroy();
+  definition.spec.unknownKey = true; // what validate() refuses, so an app that was made did not check it
+  make(false).destroy();
+  assert.throws(() => make(true), /unknownKey/);
+  assert.throws(() => make(false, { note: { missing: 1 } }), /no state key "missing"/);
+});

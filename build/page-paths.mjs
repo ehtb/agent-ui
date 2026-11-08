@@ -41,9 +41,10 @@ export const urlsOfPage = async (page, module) => {
 // A listed URL must be one the server answers with this page: the most specific page whose pattern matches it, as the render server
 // chooses. Otherwise two pages would write the same file, or a page would write over another's (a "/:slug" page listing "/about"
 // where pages/about/ exists). `pages` are all the pages of the project; `urlsByPage` maps a page's path to its listed URLs. Returns the
-// problems, one sentence each.
-export const findPathOwnerProblems = (pages, urlsByPage) => {
-  const compiled = sortBySpecificity(pages.map((page) => ({ page, pattern: compileUrlPattern(page.path) })), (entry) => entry.pattern);
+// problems, one sentence each. `compiledPages` ([{ page, pattern }], most specific first) is an optional already-compiled list, so a
+// caller that also matches links (`agent-ui check`) compiles each page's pattern once instead of once per link and per URL.
+export const findPathOwnerProblems = (pages, urlsByPage, compiledPages = null) => {
+  const compiled = compiledPages ?? sortBySpecificity(pages.map((page) => ({ page, pattern: compileUrlPattern(page.path) })), (entry) => entry.pattern);
   const ownerOf = (url) => compiled.find((entry) => entry.pattern.match(url))?.page;
   const problems = [];
   for (const page of pages) {

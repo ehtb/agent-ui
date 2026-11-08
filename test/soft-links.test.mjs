@@ -118,6 +118,26 @@ test('check reports what went wrong inside the shell\'s app, named as the shell\
   }
 });
 
+test('check lists only the first ten pages a broken link might have meant and counts the rest, so a big site stays readable', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'agent-ui-soft-'));
+  try {
+    const pages = [record('index', 'home.mjs', '/')];
+    writeShellPage(root, 'home.mjs', { path: '/', links: [link('/nowhere')], shell: false });
+    for (let number = 1; number <= 11; number++) {
+      writeShellPage(root, `p${number}.mjs`, { path: `/p${number}`, links: [link('/nowhere')], shell: false });
+      pages.push(record(`p${number}`, `p${number}.mjs`, `/p${number}`));
+    }
+    const { problems } = await checkProject({ root, config: { outDir: 'dist', pages } });
+    assert.equal(problems.length, 12, JSON.stringify(problems));
+    assert.ok(problems.every((problem) => problem.endsWith(', and 2 more')), problems[0]);
+    assert.match(problems[0], /Pages: \/, \/p1, /);
+    assert.equal(problems[0].includes('/p10'), false, 'only the first ten pages are listed');
+    assert.equal(problems[0].includes('/p11'), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('check reads the links of the shell\'s content and the targets of route.go, and a route.go to a place that is no page is reported', async () => {
   const root = mkdtempSync(join(tmpdir(), 'agent-ui-soft-'));
   try {

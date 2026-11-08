@@ -168,7 +168,7 @@ assertNoErrors(ui);
 - Writing another namespace directly instead of through `calls`, or doing `fetch`/timers inside an action instead of a resource or plugin.
 - A handler invented on the spot: declare the action and its arguments first.
 - A literal `href` that starts with `/` and is not a page, a file in `publicDir` or an API path. `agent-ui check` reports it.
-- `export *`, re-exports or default imports/exports in your own files, which the bundler does not support. Use named imports and relative paths with the extension. A package written with `export *` (zod, Tiptap) is imported by name and, for the browser, given a one-file esbuild build through `replaceModules` (BUILD.md, "Vendor files").
+- `export *`, re-exports or default imports/exports in your own files, which the bundler does not support (`agent-ui check` reports them). Use named imports and relative paths with the extension. A package written with `export *` (zod, Tiptap) is imported by name and, for the browser, given a one-file esbuild build through `replaceModules` (BUILD.md, "Vendor files").
 - Editing `dist/` or `.agent-ui/`: both are generated. Change the source and rebuild.
 - A session token in state: the state is in the document and reaches the browser. Keep it in an `HttpOnly` cookie set by the API or a form, and put only public data in `initialStateFor`.
 - Forgetting that a page is server-rendered: a plugin with a timer, a listener or a request runs on the server too, against a stand-in window, so guard it with `isServerRendering`; a library that touches `window` when it is imported fails on the server, so import it dynamically.

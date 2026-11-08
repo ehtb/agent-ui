@@ -2,6 +2,28 @@
 
 The project follows [semantic versioning](https://semver.org/) from 1.0.0. Until then a minor version (0.x.0) may change the grammar, an API or a message, and the entry says how to move. What counts as the public surface is in `README.md`, "Browser Support, Stability & Maturity".
 
+## 0.3.0 - 2026-11-08
+
+### Added
+
+- `loadConfig({ readOnly: true })` finds the pages without rewriting `.agent-ui/`, so a deployed server can run from code it cannot write.
+- Example `production-server`: a production host with no dependencies. Node's `http` serves the built files from memory (ETags, immutable hashed assets), `createSsrHandler` renders every page per request, security and CDN cache headers go on every answer, plus `/healthz`, graceful shutdown and a Dockerfile.
+
+### Changed
+
+- `createSsrHandler` answers with `content-length` instead of a chunked body, on every answer except 204 and 304.
+- A production page or shell checks its spec on the first app it makes, not on every server render; initial state from a caller (a form outcome, `initialStateFor`) is still checked each time. `specChecked` is the new `app()` option behind it.
+- `agent-ui check` reads the source once and reports every problem in it, instead of reading it again for each entry after the first problem. A broken project costs a check what a good one costs.
+- `agent-ui check` renders a few URLs at a time and keeps the report in page and URL order. Pages that wait on data no longer wait for each other, and a page that never becomes ready costs one `renderTimeoutMs` wait per batch. A `fetchFunction` that keeps mutable state now sees requests interleaved, as on a server.
+- `agent-ui check` compiles each page's URL pattern once, lists at most ten pages in a link message, and does not repeat an identical link problem.
+- `.agent-ui/` is no longer deleted and rewritten on every load: a generated file is written only when its text changed, and what the last load did not generate is removed. A second `check` on an unchanged project leaves the tree untouched.
+
+### Fixed
+
+- `agent-ui check` reads every module the pages reach as the bundler does and reports what a build or `agent-ui dev` would refuse: a re-export or `export *`, a default import or export in the project's own files, an import that does not resolve, an import cycle. Each is named once, with its file and line. Node imports such files, so `check` used to pass them.
+- `agent-ui check` no longer reports a soft link to a page that could not be loaded as a link to a page without a shell; the page's own problem is the one reported.
+- An app ignores an event whose target has left its root, so a button on a page inside a shell that removes itself when clicked (closing its dialog) no longer reaches the shell with the page's action.
+
 ## 0.2.0 - 2026-11-04
 
 ### Added

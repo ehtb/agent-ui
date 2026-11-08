@@ -221,7 +221,7 @@ const freezeDeep = (value) => {
 // Application: state, rendering, events, agent API
 // ---------------------------------------------------------------------------
 
-const APP_OPTIONS = ['namespaces', 'initialState', 'spec', 'root', 'plugins', 'dev', 'debug', 'basePath'];
+const APP_OPTIONS = ['namespaces', 'initialState', 'spec', 'root', 'plugins', 'dev', 'debug', 'basePath', 'specChecked'];
 
 // Everything an app creates while it is being made (derived values, bindings, the effects of plugins) is collected, so that
 // `destroy()` can stop all of it. A page that replaces another one (src/navigation.js) needs the old app gone, not just hidden.
@@ -243,13 +243,15 @@ const createApp = (options, disposers) => {
   for (const key of Object.keys(options ?? {})) {
     if (!APP_OPTIONS.includes(key)) fail('app', `unknown option "${key}"`, `${didYouMean(key, APP_OPTIONS)}Allowed options: ${APP_OPTIONS.join(', ')}`);
   }
-  const { namespaces = {}, initialState = {}, spec, root, plugins = [], dev, debug = false, basePath = '' } = options;
+  const { namespaces = {}, initialState = {}, spec, root, plugins = [], dev, debug = false, basePath = '', specChecked = false } = options;
   if (typeof dev !== 'boolean') fail('app', `dev is ${JSON.stringify(dev) ?? 'missing'}`, 'Pass dev: true while developing (state is frozen and mistakes are reported) and dev: false in production. There is no default, so the mode is always written down');
   if (debug !== undefined && typeof debug !== 'boolean') fail('app', `debug is ${JSON.stringify(debug)}`, 'Write debug: true to make the browser console show what the app does, or leave it out');
   checkBasePath(basePath);
   // Server rendering passes a root from a server document; browsers and the test shim use the global one.
   const document = root.ownerDocument ?? globalThis.document;
-  const problems = validate(spec, { namespaces, initialState });
+  // `specChecked`: the caller made an app from this same spec, namespaces and kind of initial state before. A server makes one app per
+  // request, and walking an unchanged spec again is a fifth of a large page's render.
+  const problems = specChecked ? [] : validate(spec, { namespaces, initialState });
   if (problems.length) {
     // One line per problem, so the text reads in a terminal; the list itself is on the error for callers that want to parse it.
     throw Object.assign(new Error(`app: the spec has ${problems.length} problem${problems.length === 1 ? '' : 's'}:\n${problems.join('\n')}`), { problems });
@@ -927,10 +929,15 @@ const createApp = (options, disposers) => {
 
   const handleEvent = (event) => {
     if (replaying) return; // the log is being played: an event now would write on top of it
+    // The element the event started on can leave the page while the event is on its way here: a page inside this app removes
+    // the button that closed its dialog, and the event keeps bubbling to the shell. The button may still carry the page's
+    // handler, so it belongs to the app that already ran it, not to this one.
+    const chain = [];
+    let element = event.target;
+    for (; element && element !== root; element = element.parentElement) chain.push(element);
+    if (element !== root) return; // the path from the target no longer reaches this app
     // A row that is animating out is already gone: it ignores events.
     // An event from inside another app that mounted in this one (the page inside a shell) belongs to that app, which has handled it.
-    const chain = [];
-    for (let element = event.target; element && element !== root; element = element.parentElement) chain.push(element);
     if (chain.some((element) => element.__app || element.getAttribute('data-transition') === 'leave')) return;
     const chord = KEY_EVENTS.includes(event.type) ? eventKeyName(event) : null;
     for (const element of chain) {

@@ -1,0 +1,19 @@
+{
+  "name": "agent-ui-example-production-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A production server with no dependencies: Node's http serves the built files from memory and renders every page with createSsrHandler.",
+  "scripts": {
+    "build": "agent-ui build",
+    "build:dev": "agent-ui build --dev",
+    "dev": "agent-ui dev",
+    "serve": "node server.mjs",
+    "start": "agent-ui build && node server.mjs",
+    "check": "agent-ui check",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@ehtb/agent-ui": "file:../.."
+  }
+}

@@ -149,6 +149,55 @@ test('agent-ui check reports a resource that calls an endpoint nothing answers, 
   }
 });
 
+test('agent-ui check renders pages at the same time and still reports them in page order, each with its own API misses', async () => {
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join, resolve } = await import('node:path');
+  const { checkProject } = await import('../cli/check.mjs');
+  const repository = resolve(import.meta.dirname, '..');
+  const project = mkdtempSync(join(tmpdir(), 'agent-ui-check-order-'));
+  const write = (name, text) => writeFileSync(join(project, name), text);
+  const appModule = (path, url) => `
+    import { definePage } from '${repository}/src/pages.js';
+    import { withResources } from '${repository}/src/resources.js';
+    const definition = definePage({
+      head: { title: '${path}' },
+      plugins: [withResources],
+      ready: (state) => state.item.status === 'ready' || state.item.status === 'failed',
+      namespaces: {
+        item: {
+          state: { status: 'idle' },
+          actions: {
+            loading: { args: {}, run: (store) => store.set('status', 'loading') },
+            loaded: { args: { data: 'json' }, run: (store) => store.set('status', 'ready') },
+            failed: { args: { message: 'string' }, run: (store) => store.set('status', 'failed') },
+          },
+          resources: [{ watch: [], request: () => ({ url: '${url}' }), onStart: 'loading', onSuccess: 'loaded', onError: 'failed' }],
+        },
+      },
+    }, { path: '${path}', view: { tag: 'p', id: 'content', children: '${path}' } });
+    export const { create, describePage, namespaces, spec } = definition;
+  `;
+  try {
+    write('api.mjs', `export const createApi = () => ({ apiBase: '/api', handle: () => null });`);
+    write('slow.mjs', appModule('/slow', '/api/slow.json'));
+    write('fast.mjs', appModule('/fast', '/api/fast.json'));
+    // The first page's answer is the last to arrive, so it is the second page that finishes first.
+    const fetchFunction = async (url) => {
+      if (String(url).includes('/slow.json')) await new Promise((resolveDelay) => setTimeout(resolveDelay, 40));
+      return Response.json({}, { status: String(url).includes('/slow.json') ? 404 : 200 });
+    };
+    const pages = [{ name: 'slow', path: '/slow', app: 'slow.mjs', file: 'pages/slow/page.js' }, { name: 'fast', path: '/fast', app: 'fast.mjs', file: 'pages/fast/page.js' }];
+    const checked = await checkProject({ root: project, config: { outDir: 'dist', api: 'api.mjs', fetchFunction, pages } });
+    assert.deepEqual(checked.measurements.map((measured) => measured.url), ['/slow', '/fast'], 'the report keeps page order however the renders finish');
+    assert.ok(checked.problems.some((problem) => problem.startsWith('/slow /slow: GET /api/slow.json answered 404')), JSON.stringify(checked.problems));
+    assert.equal(checked.problems.some((problem) => problem.startsWith('/fast /fast: GET /api/slow.json')), false, 'a miss stays with the page that made the request');
+    assert.equal(checked.pagesChecked, 2);
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+});
+
 test('agent-ui check reports a duplicate list key inside a branch that is not shown, with the list and the data to fix', async () => {
   const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
@@ -283,5 +332,33 @@ test('an effect that throws during a flush is reported and the other effects sti
     assert.ok(messages.some((message) => /derived "box\.first": /.test(message)), JSON.stringify(messages));
   } finally {
     console.error = originalError;
+  }
+});
+
+test('agent-ui check reports what the bundler refuses in the source, once per file and with its line, though Node would import it', async () => {
+  const { copyFixture } = await import('./copy-fixture.mjs');
+  const { loadConfig } = await import('../build/config.mjs');
+  const { checkProject } = await import('../cli/check.mjs');
+  const project = copyFixture('pages-site');
+  try {
+    // A re-export in a module two pages share, and a second broken module under one of them: one read of the graph reports both.
+    project.write('pages/parts.js', "export const title = 'Home';\n");
+    project.write('pages/shared.js', "// The words the pages share.\nexport { title } from './parts.js';\n");
+    project.write('pages/view.js', "import { title } from './shared.js';\n\nexport const view = { tag: 'main', id: 'home', children: [{ tag: 'h1', id: 'home-title', children: title }] };\n");
+    project.write('pages/counted/broken.js', "export * from '../shared.js';\n");
+    project.write('pages/counted/view.js', `import '../shared.js';\nimport './broken.js';\n\n${project.read('pages/counted/view.js')}`);
+    const config = await loadConfig({ root: project.root, mode: { dev: true } });
+    const { problems } = await checkProject({ config, root: project.root });
+    const refused = problems.filter((problem) => /re-exports are not supported/.test(problem));
+    assert.deepEqual(refused.map((problem) => problem.split(': ')[0]).sort(), ['pages/counted/broken.js:1', 'pages/shared.js:2'], JSON.stringify(problems));
+    assert.match(refused[0], /Export named values: export const name = \.\.\./);
+
+    // Once fixed, the same project has no problem of the source.
+    project.write('pages/shared.js', "import { title as homeTitle } from './parts.js';\n\nexport const title = homeTitle;\n");
+    project.write('pages/counted/broken.js', "import { title } from '../shared.js';\n\nexport const other = title;\n");
+    const fixed = await checkProject({ config: await loadConfig({ root: project.root, mode: { dev: true } }), root: project.root });
+    assert.deepEqual(fixed.problems.filter((problem) => /^pages\/(?:shared|counted\/broken)\.js/.test(problem)), []);
+  } finally {
+    project.cleanup();
   }
 });

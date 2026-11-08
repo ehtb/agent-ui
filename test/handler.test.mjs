@@ -3,7 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -64,6 +64,21 @@ test('the host keeps its own routes and serves the assets; the handler renders p
   assert.match(await unknown.text(), /<title>Item 99<\/title>/);
   assert.equal((await fetch(`${origin}/item/2/`)).status, 200); // a trailing slash is the same page
   assert.match(await (await fetch(`${origin}/`)).text(), /<!--ssr:start-->.*Home/s);
+});
+
+test('a read-only load finds the same pages and rewrites no generated module', async () => {
+  const generated = resolve(repositoryRoot, '.agent-ui/index/app.js');
+  const before = statSync(generated).mtimeMs;
+  const { pages } = await loadConfig({ root: repositoryRoot, file: 'build.config.mjs', readOnly: true });
+  assert.deepEqual(pages.map((page) => [page.name, page.app]), builtConfig.pages.map((page) => [page.name, page.app]));
+  assert.equal(statSync(generated).mtimeMs, before);
+});
+
+test('an answer says its length, in bytes, instead of arriving chunked', async () => {
+  const response = await fetch(`${origin}/`);
+  const body = Buffer.from(await response.arrayBuffer());
+  assert.equal(Number(response.headers.get('content-length')), body.length);
+  assert.equal(response.headers.get('transfer-encoding'), null);
 });
 
 test('a parameter with an encoded percent or slash matches its page: patterns see the path as sent', async () => {

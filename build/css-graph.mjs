@@ -5,10 +5,11 @@
 //
 // The JavaScript never imports CSS: page.js, view.js and component modules run in Node (build, check, serve), which cannot
 // load .css. A style module is generated and is only reached by a browser entry.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { BuildError, lineOf } from './parse-module.mjs';
 import { importPath, toPosixPath } from './import-path.mjs';
+import { writeFileIfChanged } from './write-file.mjs';
 
 export const STYLES_DIRECTORY = 'styles';
 
@@ -227,7 +228,7 @@ export const writeStyleModules = ({ projectRoot, generatedDirectory, entries, gl
     // stylesheet after minification.
     const hasOwnCss = skipTrivia(file.css, 0, path) < file.css.length;
     if (hasOwnCss) lines.push(`import '${importPath(wrapper, resolve(projectRoot, path))}';`);
-    writeFileSync(wrapper, `${lines.join('\n')}\n`);
+    writeFileIfChanged(wrapper, `${lines.join('\n')}\n`);
     if (file.imports.length && hasOwnCss) cssOverrides.set(path, file.css);
   }
   return { wrapperOf, cssOverrides, sources: order, files };

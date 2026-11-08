@@ -40,14 +40,16 @@ const pageRoute = {
 export const defineShell = (definition) => {
   checkShell(definition, route);
   const { name, namespaces = {}, plugins = [], reads = [], debug } = definition;
+  // The content of each page the shell has mounted: production checks one content once (src/pages.js does the same for a page).
+  const checkedViews = new WeakSet();
   return {
     kind: 'shell',
     name,
     // Every namespace the shell's app has (its own and `route`): what the content is validated against, in a production build too.
     namespaces: { [RESERVED_NAMESPACE]: route, ...namespaces },
     // The shell's app, mounted in `root` with the shell's content (`view`, a finished spec).
-    createApp: (environment, view) =>
-      app({
+    createApp: (environment, view) => {
+      const shellApp = app({
         namespaces: { [RESERVED_NAMESPACE]: route, ...namespaces },
         initialState: { [RESERVED_NAMESPACE]: { path: withoutBase(environment.basePath ?? '', environment.win?.location?.pathname ?? '/') ?? '/' } },
         spec: view,
@@ -56,7 +58,11 @@ export const defineShell = (definition) => {
         basePath: environment.basePath ?? '',
         debug: environment.debug ?? debug,
         plugins: plugins.map((plugin) => plugin({ ...environment, shellName: name })),
-      }),
+        specChecked: !environment.dev && checkedViews.has(view),
+      });
+      checkedViews.add(view);
+      return shellApp;
+    },
     route: pageRoute,
     // The first page of a document, in the browser (src/pages.js, startPage): the server's markup is the shell with the page inside it.
     // The page's element is taken out while the shell mounts, because a mount replaces the markup of its root, and put back in the

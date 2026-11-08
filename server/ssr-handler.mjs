@@ -425,7 +425,8 @@ export const createSsrHandler = async (options = {}) => {
             responseHeaders = mergeResponseHeaders(responseHeaders, SECURITY_HEADERS);
           }
           if (isGone()) return; // a transform that awaited the network may have outlived the visitor
-          response.writeHead(status, responseHeaders);
+          // The whole body is known, so the answer says its length rather than arriving chunked. 204 and 304 carry no body and no length.
+          response.writeHead(status, status === 204 || status === 304 ? responseHeaders : { ...responseHeaders, 'content-length': Buffer.byteLength(responseBody) });
           response.end(responseBody);
         } catch (error) {
           if (isGone()) return;
