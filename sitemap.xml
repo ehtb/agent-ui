@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://ehtb.github.io/agent-ui/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/docs/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/docs/overview/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/docs/agent-rules/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/docs/guide/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/docs/api/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/docs/build/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/docs/converting/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/docs/design/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/docs/releasing/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/docs/changelog/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/list-edit/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/form-validation/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/async-list/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/modal/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/combobox/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/drag-reorder/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/soft-shell/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/nested-rows/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/row-state/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/format-values/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/draw-into-element/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/svg-icons/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/server-hooks/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/cookbook/browser-only-plugin/</loc></url>
+  <url><loc>https://ehtb.github.io/agent-ui/examples/</loc></url>
+</urlset>

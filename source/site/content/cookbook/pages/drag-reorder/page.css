@@ -1,0 +1,7 @@
+/* The picked-up row follows the pointer: --follow-x and --follow-y are written by the runtime while `follow` is true. It must not
+   catch the pointer itself, or the rows beneath it never receive pointerover. */
+#tasks { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.5rem; user-select: none; }
+#tasks li { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border: 1px solid #ccc; background: #fff; }
+/* touch-action: none, so a touch drag on the grip does not scroll the page. */
+#tasks li button { cursor: grab; touch-action: none; border: 0; background: transparent; font: inherit; }
+#tasks li.dragging { transform: translate(var(--follow-x, 0px), var(--follow-y, 0px)); pointer-events: none; opacity: 0.85; box-shadow: 0 4px 12px rgb(0 0 0 / 0.2); }
