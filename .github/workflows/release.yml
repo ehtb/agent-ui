@@ -26,7 +26,7 @@ jobs:
         run: npm install --global typescript@5
       - name: Test
         run: npm test
-      - name: Publish with provenance
+      - name: Update npm (trusted publishing needs a recent version)
+        run: npm install --global npm@latest
+      - name: Publish with provenance (trusted publishing, no token)
         run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

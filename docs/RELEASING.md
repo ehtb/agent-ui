@@ -6,7 +6,7 @@ The package is published to npm as `@ehtb/agent-ui` from a tag on `main`. The wo
 
 - The npm account or organization owns the `@ehtb` scope. `publishConfig.access` is `public`, so the package is public.
 - The repository is public and **private vulnerability reporting** is enabled (the Security tab), because `SECURITY.md` points there.
-- The `NPM_TOKEN` repository secret holds an npm token that can publish `@ehtb/agent-ui` (or the workflow is switched to npm trusted publishing and the token is removed).
+- npm **trusted publishing** is configured for `@ehtb/agent-ui` (npmjs.com, the package's Settings, Trusted Publisher: GitHub Actions, repository `ehtb/agent-ui`, workflow `release.yml`). The workflow publishes through GitHub's OIDC identity (`id-token: write`), so there is no npm token and no `NPM_TOKEN` secret.
 - `main` is protected and the CI checks are required.
 
 ## Checklist
