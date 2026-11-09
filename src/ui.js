@@ -36,7 +36,7 @@
 // Reactivity: signals, effects, batched flush
 // ---------------------------------------------------------------------------
 
-import { DELEGATED_EVENTS, KEY_EVENTS, SVG_NAMESPACE, SVG_TAGS, URL_PROPS, isBinding, isPlainObject, toArray, matchesArgumentType, isUnsafeUrl, isSameValue, readEventPath, eventKeyName, splitRowPath } from './spec-core.js';
+import { DELEGATED_EVENTS, KEY_EVENTS, PAGE_PLUGIN, SVG_NAMESPACE, SVG_TAGS, URL_PROPS, isBinding, isPlainObject, toArray, matchesArgumentType, isUnsafeUrl, isSameValue, nextFrame, readEventPath, eventKeyName, splitRowPath } from './spec-core.js';
 import { validate, grammar, findJsonProblems, findShapeProblems } from './validate.js';
 import { didYouMean, fail, failOwnedTwice } from './messages.js';
 import { checkBasePath, checkPluginProperties, checkPropertyHandler, noteRowsJumped, checkRowChanges, checkRowKey, checkRowState, checkRowStateWrite, checkEachKeys, consumeCheckedListProblem, forgetCheckedListProblems } from './runtime-checks.js';
@@ -630,7 +630,6 @@ const createApp = (options, disposers) => {
   const mountedEachPaths = dev ? new Set() : null; // development: the lists that rendered, so the check of the others skips them
   const checkedListProblems = dev ? new Map() : null; // development: list problem -> how many the check at mount reported; the first render of that list does not repeat those
   const reportListProblem = (code, details) => consumeCheckedListProblem(checkedListProblems, code, details) || reportError(code, details);
-  const nextFrame = (callback) => (globalThis.requestAnimationFrame ? globalThis.requestAnimationFrame(callback) : setTimeout(callback, 16));
   const markEntering = (node) => {
     if (!node.__transitionMs || !firstRenderDone || replaying) return; // a replay rebuilds the state, it does not play it
     node.setAttribute('data-transition', 'enter');
@@ -1209,7 +1208,16 @@ const createApp = (options, disposers) => {
   if (typeof window !== 'undefined') window.__ui = api;
   // An app that cannot finish starting leaves nothing running: its effects, listeners and the plugins that did start are stopped.
   try {
-    plugins.forEach((plugin) => plugin(api));
+    plugins.forEach((plugin, index) => {
+      if (typeof plugin !== 'function') fail('app', `plugins[${index}] is ${typeof plugin}, not a function`, 'A plugin is (api) => void; a page lists a factory such as withResources in page.js plugins');
+      // A page factory in app() would return its plugin and install nothing (the prop or the resources it handles stay unhandled),
+      // so the package's factories say so. A plugin's own return value is not inspected: `(api) => api.watch(...)` ends with an
+      // unsubscribe function and is a correct plugin.
+      if (plugin[PAGE_PLUGIN]) {
+        fail('app', `plugins[${index}]${plugin.name ? ` ("${plugin.name}")` : ''} is a page plugin factory`, 'A factory (environment) => plugin belongs in page.js plugins; app() takes the plugin itself: follow, moves, resources(fetchFunction), navigation({ ... })');
+      }
+      plugin(api);
+    });
     for (const [namespace, definition] of Object.entries(namespaces)) {
       if (definition.resources?.length && !claimedFeatures.has('resources')) {
         fail(`namespace "${namespace}"`, 'declares resources, but no plugin loads them', 'Add the resources plugin to plugins (resources(fetchFunction), imported from @ehtb/agent-ui/resources); in a page write `plugins: [withResources]`');

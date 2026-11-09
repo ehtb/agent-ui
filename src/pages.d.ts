@@ -47,7 +47,7 @@ export interface Page {
   /** True makes the browser console show what the page's app does: the state, and every action with what it changed. Default false. */
   debug?: boolean;
   /** What the page needs from outside its state, imported by the page: `[withResources]`, `[({ win }) => windowEvents(win, {...})]`. */
-  plugins?: ((environment: { root: any; win: any; fetchFunction: any; dev: boolean; page: { path: string; head: PageHead } }) => Plugin)[];
+  plugins?: ((environment: PagePluginEnvironment) => Plugin)[];
   /** True when the page has what it needs. The server waits for it before rendering; the view's `pending` shows until then. */
   ready?: (state: StateSnapshot) => boolean;
   /** HTTP status of the page when a server renders it (404 for an unknown id). */
@@ -71,30 +71,60 @@ export interface ShellContent {
   name: string;
   view: SpecNode;
 }
+/** What a page's plugin factory receives: the app's environment, plus the page it is listed in. */
+export interface PagePluginEnvironment {
+  root: any;
+  win: any;
+  fetchFunction: any;
+  dev: boolean;
+  basePath: string;
+  /** True while a server renders the page: a plugin with an effect of its own returns early. */
+  isServerRendering: boolean;
+  /** True when the browser started from markup and state a server wrote. */
+  serverRendered?: boolean;
+  initialState?: StateSnapshot;
+  debug?: boolean;
+  page: { path: string; head: PageHead };
+}
+/** What create() and mount() receive: the environment, the root to render into, the state to start from and, in a document with a shell, the shell's app. */
+export interface PageEnvironment {
+  root: any;
+  win: any;
+  fetchFunction: any;
+  dev: boolean;
+  basePath?: string;
+  isServerRendering?: boolean;
+  serverRendered?: boolean;
+  initialState?: StateSnapshot;
+  debug?: boolean;
+  shell?: any;
+}
 export interface PageDefinition {
   path: string;
   namespaces: Record<string, Namespace>;
   spec: SpecNode;
   /** The page's app. `shell` is the app of the page's shell, when it has one. */
-  create: (environment: { root: any; win: any; fetchFunction: any; dev: boolean; initialState?: StateSnapshot; serverRendered?: boolean; shell?: any }) => any;
+  create: (environment: PageEnvironment) => any;
   /** Creates the page's app and tells it the browser has taken over (route.hydrate). */
-  mount: (environment: { root: any; win: any; fetchFunction: any; dev: boolean; initialState?: StateSnapshot; serverRendered?: boolean; shell?: any }) => any;
+  mount: (environment: PageEnvironment) => any;
   /** The shell's app; undefined for a page without a shell. */
-  createShell?: (environment: { root: any; win: any; fetchFunction: any; dev: boolean }) => any;
+  createShell?: (environment: { root: any; win: any; fetchFunction: any; dev: boolean; basePath?: string; isServerRendering?: boolean }) => any;
   shellName?: string;
   /** The namespaces of the shell's app (its own and `route`), for validating its content. */
   shellNamespaces?: Record<string, Namespace>;
   shellContent?: ShellContent;
-  describePage: (state: StateSnapshot) => DocumentDescription;
+  describePage: (state: StateSnapshot, options?: { basePath?: string }) => DocumentDescription;
 }
 /** `view` (with `layout` and `pending`) or `spec` (already built): exactly one is given. A production entry passes `spec`, a development entry `view`/`layout`/`pending`. */
 export type PageOptions = { path: string; shell?: ShellContent } & ({ view: SpecNode; layout?: (content: SpecNode) => SpecNode; pending?: SpecNode; spec?: undefined } | { spec: SpecNode; view?: undefined; layout?: undefined; pending?: undefined });
 /** The `view`, `layout` and `pending` of a `import * as` view.js module, after checking that it exports nothing else. */
 export function contentOf(viewModule: Record<string, unknown>, file: string): { view: SpecNode; layout?: (content: SpecNode) => SpecNode; pending?: SpecNode; shell?: ShellContent };
+/** The `page` of an `import * as` page.js module, after checking that the module exports one: a misspelt export fails with the file and the fix. */
+export function pageOf(pageModule: Record<string, unknown>, file: string): Page;
 export function definePage(page: Page, options: PageOptions): PageDefinition;
 /** What a generated browser entry calls: registers the page under `url` (its own file) and starts it when it is the first in the document. */
 export function startPage(page: Page, options: { path: string; dev: boolean; basePath?: string; url?: string; spec?: SpecNode; view?: SpecNode; layout?: (content: SpecNode) => SpecNode; pending?: SpecNode; shell?: ShellContent }): PageDefinition;
 /** The definition registered by the entry file at `url`, if that file was loaded. */
 export function findEntry(url: string): PageDefinition | undefined;
 /** What runs in this document: the page's definition and app, its shell app (null without a shell) and the element the page lives in; null before the first page started. Soft navigation keeps it current. */
-export function currentPage(): { entry: PageDefinition; ui: any; shellApp: any; slot: any } | null;
+export function currentPage(): { entry: PageDefinition; ui: any; shellApp: any; slot: any; dev: boolean; basePath: string } | null;

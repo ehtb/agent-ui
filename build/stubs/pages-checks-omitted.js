@@ -2,4 +2,5 @@
 // Every export of the real module exists here, so imports stay valid.
 export const VIEW_EXPORTS = [];
 export const checkPage = () => {};
+export const checkPageExports = () => {};
 export const checkViewExports = () => {};

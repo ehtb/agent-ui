@@ -77,7 +77,7 @@ Some old behavior has no equivalent, and the choice changes the product. Collect
 - Component-local state that is not per list row (becomes a namespace keyed by id).
 - Rows that are very long lists (no virtualization).
 - Native drag and drop (becomes pointer events with the `drag-reorder` recipe).
-- SVG, canvas and media elements (become a plugin that draws into one element).
+- Canvas and media elements (become a plugin that draws into one element). SVG is a closed subset for icons and simple drawings (recipe `svg-icons`).
 - Portals and positioning libraries (content renders in place; CSS positions it).
 - Animation libraries (become `transition` plus CSS).
 - Randomness and the clock inside logic (become state set by an event or a resource).

@@ -40,7 +40,7 @@
 // injectable (`importModule`, `loadStylesheet`, `fetchFunction`), for tests and for hosts that load modules their own way.
 import { browserEnvironment } from './hydrate.js';
 import { readModuleScript, readStateScript, readStylesheets } from './document-markup-reader.js';
-import { isUnsafeUrl } from './spec-core.js';
+import { isUnsafeUrl, markPagePlugin } from './spec-core.js';
 import { currentPage, findEntry } from './pages.js';
 import { applyHead } from './head.js';
 import { readHead } from './head-reader.js';
@@ -238,4 +238,6 @@ export const navigation = ({ win, fetchFunction, importModule = (url) => import(
 };
 
 // The plugin as a shell lists it (`plugins: [withNavigation]`).
-export const withNavigation = ({ win, fetchFunction, shellName, basePath }) => navigation({ win, fetchFunction, shellName, basePath });
+export const withNavigation = markPagePlugin(function withNavigation({ win, fetchFunction, shellName, basePath }) {
+  return navigation({ win, fetchFunction, shellName, basePath });
+});

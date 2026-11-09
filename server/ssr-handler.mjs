@@ -52,23 +52,26 @@ import { resolve } from 'node:path';
 import { SECURITY_HEADERS, isFilePath } from './file-types.mjs';
 import { pathToFileURL } from 'node:url';
 import { renderDocument } from './document.mjs';
-import { createRequestContext, isAllowedHost, isLocalPath, parseRequestUrl, requestContextForUrl } from './request.mjs';
+import { checkHosts, createRequestContext, isAllowedHost, isLocalPath, parseRequestUrl, requestContextForUrl } from './request.mjs';
 import { destroyApps, renderPage } from './render-page.js';
 import { didYouMean, fail } from '../src/messages.js';
 import { checkResponseHeaders, mergeResponseHeaders } from '../src/http-headers.js';
 import { describeValue, isPlainObject } from '../src/spec-core.js';
 import { mergeInitialState } from '../src/namespaces.js';
-import { compileUrlPattern } from '../src/url-pattern.js';
+import { compileUrlPattern, withoutTrailingSlash } from '../src/url-pattern.js';
 import { withBase, withoutBase } from '../src/base-path.js';
 import { BASE_PATH_ADVICE, isBasePath } from '../src/base-path-checks.js';
 
 const projectRoot = process.cwd();
 const SERVER_ERROR = 'internal server error';
+// A status whose answer carries no body, so `api.handle` may leave `body` out: a redirect, 204 and 304. Anything else says what it sends.
+const MAY_HAVE_NO_BODY = (status) => (status >= 300 && status < 400) || status === 204 || status === 304;
 
-// A short, safe rendering of a value for an error message: JSON.stringify throws on a cycle, a BigInt or a throwing getter.
+// A short, safe rendering of a value for an error message: JSON.stringify throws on a cycle, a BigInt or a throwing getter, and
+// writes NaN and Infinity as "null", which would read as a value the author never wrote.
 const preview = (value) => {
   try {
-    const text = JSON.stringify(value);
+    const text = typeof value === 'number' ? String(value) : JSON.stringify(value);
     if (text !== undefined) return text.slice(0, 120);
   } catch {}
   return describeValue(value);
@@ -86,9 +89,13 @@ const readBody = (request, maximumBytes) =>
     let settled = false;
     const listeners = {
       data: (chunk) => {
-        size += chunk.length;
+        // A host framework may set an encoding on the stream (request.setEncoding), which turns chunks into strings: Buffer.from
+        // in that same encoding keeps the byte count honest (a latin1 chunk is one byte per character, a UTF-8 one is not) and
+        // Buffer.concat works either way.
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, request.readableEncoding ?? 'utf8');
+        size += buffer.length;
         if (size > maximumBytes) failRead(bodyTooLarge(maximumBytes));
-        else chunks.push(chunk);
+        else chunks.push(buffer);
       },
       end: () => {
         if (settled) return;
@@ -158,12 +165,33 @@ const parseBody = (headers, text) => {
 const SSR_OPTIONS = ['config', 'root', 'outDir', 'maxBodyBytes', 'timeoutMs', 'onTimeout', 'log', 'onError', 'hosts', 'initialStateFor', 'stateForBrowser', 'transformResponse'];
 const TIMEOUT_POLICIES = ['error', 'serve'];
 
+// The project's API module (`config.api`), its shape checked before the handler answers anything: `createApi({ root })` must
+// return { handle, handleForm?, apiBase? }. `agent-ui check` calls the same function, so a mistake is found there too.
+export const createApiFor = async ({ config, root, where = 'createSsrHandler' }) => {
+  const apiModule = await import(pathToFileURL(resolve(root, config.api)));
+  if (typeof apiModule.createApi !== 'function') {
+    fail(where, `config.api "${config.api}" does not export a function createApi`, `${didYouMean('createApi', Object.keys(apiModule))}Export \`createApi({ root }) => { handle, handleForm?, apiBase? }\` from ${config.api} (examples/events/compose-api.js is one to copy)`);
+  }
+  const api = await apiModule.createApi({ root });
+  if (api === null || typeof api !== 'object' || Array.isArray(api)) {
+    fail(where, `createApi() of ${config.api} returned ${preview(api)}, not an object { handle, handleForm?, apiBase? }`, 'Return { handle } and, for plain form posts, handleForm (examples/events/compose-api.js is one to copy)');
+  }
+  if (typeof api.handle !== 'function') {
+    fail(where, `createApi() of ${config.api} returned an object without "handle"`, `${didYouMean('handle', Object.keys(api))}Return { handle({ ...request, body }) { ... }, handleForm?({ ...request, form }) { ... } }`);
+  }
+  if (api.handleForm !== undefined && api.handleForm !== null && typeof api.handleForm !== 'function') {
+    fail(where, `createApi() of ${config.api} returned "handleForm" as ${describeValue(api.handleForm)}`, 'Write handleForm({ ...request, form }) { ... } for plain HTML form posts, or leave it out');
+  }
+  return api;
+};
+
 export const createSsrHandler = async (options = {}) => {
   for (const key of Object.keys(options)) {
     if (!SSR_OPTIONS.includes(key)) fail('createSsrHandler', `unknown option "${key}"`, `${didYouMean(key, SSR_OPTIONS)}Allowed options: ${SSR_OPTIONS.join(', ')}. The data requests of a page are answered by \`fetchFunction\` of the config`);
   }
   const { config, root = projectRoot, outDir = config?.outDir ?? 'dist', maxBodyBytes = 100_000, timeoutMs = config?.renderTimeoutMs ?? 2000, onTimeout = 'error', log = console.warn, onError = console.error, hosts = null, initialStateFor = null, stateForBrowser = config?.stateForBrowser ?? null, transformResponse = null } = options;
   if (!config || typeof config !== 'object') throw new Error('createSsrHandler: pass `config`, the build configuration (loadConfig from @ehtb/agent-ui/build/config.mjs returns it)');
+  const allowedHosts = checkHosts(hosts, 'createSsrHandler');
   if (!Number.isInteger(maxBodyBytes) || maxBodyBytes < 1) fail('createSsrHandler', `maxBodyBytes ${preview(maxBodyBytes)} is not allowed`, 'Pass a whole number of bytes, for example maxBodyBytes: 100000');
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1) fail('createSsrHandler', `timeoutMs ${preview(timeoutMs)} is not allowed`, 'Pass a whole number of milliseconds, 1 or more, for example timeoutMs: 2000');
   if (!TIMEOUT_POLICIES.includes(onTimeout)) fail('createSsrHandler', `onTimeout "${onTimeout}" is not allowed`, `Write onTimeout: "error" (answer 503 and never serve a half-loaded page) or onTimeout: "serve" (answer the partial page with 200). Allowed values: ${TIMEOUT_POLICIES.join(', ')}`);
@@ -193,17 +221,14 @@ export const createSsrHandler = async (options = {}) => {
     templates.set(page.name, readFileSync(templateFile, 'utf8'));
   }
   const templateFor = (page) => templates.get(page.name);
-  const api = config.api ? (await import(pathToFileURL(resolve(root, config.api)))).createApi({ root }) : null;
+  const api = config.api ? await createApiFor({ config, root }) : null;
   const apiPrefix = `${api?.apiBase ?? '/api'}/`;
   const fetchFunction = config.fetchFunction;
   const basePath = config.basePath ?? '';
   if (!isBasePath(basePath)) fail('createSsrHandler', `config.basePath ${preview(basePath)} is not allowed`, BASE_PATH_ADVICE);
 
   // A trailing slash is the same page: "/product/3/" is "/product/:id".
-  const findPage = (pathname) => {
-    const normalized = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
-    return pages.find((page) => page.matcher.match(normalized));
-  };
+  const findPage = (pathname) => pages.find((page) => page.matcher.match(withoutTrailingSlash(pathname)));
 
   const renderPageFor = async (page, context, initialState = {}, url = context.pathname + context.search) => {
     const { create, createShell = null, describePage = null } = modules.get(page.name);
@@ -300,17 +325,24 @@ export const createSsrHandler = async (options = {}) => {
         if (answer.raw !== undefined && typeof answer.raw !== 'boolean') fail('api.handle', `answered raw: ${preview(answer.raw)}, not true or false`, 'Write raw: true when the body is already the exact bytes to send, or leave it out for JSON');
         if (!Number.isInteger(answer.status)) fail('api.handle', `answered ${preview(answer)}, which has no integer "status"`, 'Answer { status, body, headers? } for a request it handles, or a falsy value for one it does not');
         if (answer.status < 100 || answer.status > 599) fail('api.handle', `answered status ${answer.status}, not an HTTP status`, 'Return a whole number from 100 to 599');
+        // A forgotten body would otherwise reach response.end() as undefined and become a 500 without a reason. A redirect (3xx),
+        // 204 and 304 are answered with an empty body whether or not one is given.
+        if (answer.body === undefined && !answer.raw && !MAY_HAVE_NO_BODY(answer.status)) {
+          fail('api.handle', `answered status ${answer.status} without "body"`, 'Add body: the JSON value to send (null for an empty one), or answer a status that carries no body (a 3xx redirect, 204 or 304)');
+        }
         if (answer.raw) {
+          if (answer.body === undefined && !MAY_HAVE_NO_BODY(answer.status)) fail('api.handle', 'answered raw: true without "body"', 'Return the bytes as a string or a Uint8Array, or answer a status that carries no body (a 3xx redirect, 204 or 304)');
           const binary = answer.body instanceof Uint8Array;
-          if (typeof answer.body !== 'string' && !binary) fail('api.handle', `answered raw: true with a body of type ${describeValue(answer.body)}`, 'Return a string (CSV, XML, plain text) or a Uint8Array (bytes), or leave raw out to send JSON');
+          if (answer.body !== undefined && typeof answer.body !== 'string' && !binary) fail('api.handle', `answered raw: true with a body of type ${describeValue(answer.body)}`, 'Return a string (CSV, XML, plain text) or a Uint8Array (bytes), or leave raw out to send JSON');
+          const rawBody = answer.body ?? '';
           // A raw answer chooses its own media type; guessing it from the body would be wrong for the one case raw exists for.
           const rawHeaders = checkResponseHeaders(answer.headers, 'api.handle', { allow: ['content-type'] });
-          if (answer.body.length > 0 && !rawHeaders?.['content-type']) fail('api.handle', 'answered raw: true without a "content-type" header', 'Set headers: { "content-type": "text/csv; charset=utf-8" } (or the type of the bytes) so the browser reads the body correctly');
-          await send(answer.status, rawHeaders ?? {}, answer.body, { defaultCacheControl: 'no-store' });
+          if (rawBody.length > 0 && !rawHeaders?.['content-type']) fail('api.handle', 'answered raw: true without a "content-type" header', 'Set headers: { "content-type": "text/csv; charset=utf-8" } (or the type of the bytes) so the browser reads the body correctly');
+          await send(answer.status, rawHeaders ?? {}, rawBody, { defaultCacheControl: 'no-store' });
           return true;
         }
         const answerHeaders = checkResponseHeaders(answer.headers, 'api.handle');
-        await send(answer.status, mergeResponseHeaders({ 'content-type': 'application/json; charset=utf-8' }, answerHeaders), JSON.stringify(answer.body), { defaultCacheControl: 'no-store' });
+        await send(answer.status, mergeResponseHeaders({ 'content-type': 'application/json; charset=utf-8' }, answerHeaders), JSON.stringify(answer.body) ?? '', { defaultCacheControl: 'no-store' });
         return true;
       }
       const outcome = context.method === 'POST' && (await api.handleForm?.({ ...context, form: body }));
@@ -390,7 +422,7 @@ export const createSsrHandler = async (options = {}) => {
       onError(error, requestContext);
     };
     try {
-      if (!isAllowedHost(request, hosts)) return void response.writeHead(421, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...SECURITY_HEADERS }).end('misdirected request: this server answers to its own host names only');
+      if (!isAllowedHost(request, allowedHosts)) return void response.writeHead(421, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...SECURITY_HEADERS }).end('misdirected request: this server answers to its own host names only');
       const location = readLocation(request.url);
       if (location === null) return void response.writeHead(400, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...SECURITY_HEADERS }).end('bad request: malformed percent-encoding in the URL');
       const sitePath = withoutBase(basePath, location.pathname);

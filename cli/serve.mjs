@@ -1,4 +1,5 @@
-// `agent-ui serve [--config=<file>] [--out=<directory>] [--port=8080] [--host=127.0.0.1]`: serves the built site (`agent-ui build` first):
+// `agent-ui serve [--config=<file>] [--out=<directory>] [--port=8080] [--host=127.0.0.1]` (the port is --port, otherwise the PORT
+// environment variable, otherwise 8080): serves the built site (`agent-ui build` first):
 // every page is rendered on the server for the URL that was asked for, the project's JSON API and form posts are answered, and the files
 // of the build are sent. It renders from the project's sources, so it needs them next to the build, and it refuses a build that is older
 // than they are. It listens on this machine only unless --host says otherwise.
@@ -8,15 +9,17 @@ import { loadConfig } from '../build/config.mjs';
 import { staleReason } from '../build/stamp.mjs';
 import { createSsrServer } from './ssr-server.mjs';
 import { hostsFor } from '../server/request.mjs';
-import { parseOrExit } from './arguments.mjs';
+import { parseOrExit, portOrExit } from './arguments.mjs';
 import { isMain } from './is-main.mjs';
 
 const projectRoot = process.cwd();
 
 if (isMain(import.meta.url)) {
   const options = parseOrExit(process.argv.slice(2), { config: 'text', out: 'text', port: 'number', host: 'text' }, { command: 'agent-ui serve' });
-  const port = options.port ?? 8080;
+  const port = portOrExit(options, { command: 'agent-ui serve' });
   const host = options.host ?? '127.0.0.1'; // this machine only; --host=0.0.0.0 is the explicit choice to serve the network
+  // Not readOnly: serve regenerates the production modules in .agent-ui/, which `agent-ui check` (a development load) removes
+  // (spec.js) or rewrites, so a build followed by a check is servable again. The stale check below then sees the files serve uses.
   const config = await loadConfig({ root: projectRoot, file: options.config });
   const outDir = options.out ?? config.outDir;
   let manifest = null;

@@ -16,21 +16,33 @@ export interface ShellDefinition {
   /** True makes the browser console show what the shell's app does. Default false. */
   debug?: boolean;
   /** What the shell needs from outside its state, for example [withNavigation]. */
-  plugins?: ((environment: { root: any; win: any; fetchFunction: any; dev: boolean; shellName: string }) => Plugin)[];
+  plugins?: ((environment: ShellPluginEnvironment) => Plugin)[];
   /** What the shell shows of the page, one way (syncApps). Checked when a page starts with the shell. */
   reads?: ShellRead[];
+}
+/** What a shell's plugin factory receives: the app's environment, the shell's name and, for withNavigation, its base path. */
+export interface ShellPluginEnvironment {
+  root: any;
+  win: any;
+  fetchFunction: any;
+  dev: boolean;
+  shellName: string;
+  basePath?: string;
+  isServerRendering?: boolean;
+  serverRendered?: boolean;
+  initialState?: Record<string, Record<string, any>>;
 }
 export interface Shell {
   kind: 'shell';
   name: string;
   /** Every namespace the shell's app has (its own and `route`). */
   namespaces: Record<string, Namespace>;
-  createApp(environment: { root: any; win: any; fetchFunction: any; dev?: boolean }, view: SpecNode): any;
+  createApp(environment: { root: any; win: any; fetchFunction: any; dev?: boolean; basePath?: string; isServerRendering?: boolean }, view: SpecNode): any;
   /** What the shell adds to the route namespace of its pages: route.destination and route.go. */
   route: { state: Record<string, unknown>; actions: Record<string, unknown> };
   /** The first page of a browser document, with the shell around it. */
   start(entry: any, environment: any): { entry: any; ui: any; shellApp: any; slot: any };
-  connect(pageApp: any, shellApp: any, win: any): () => void;
+  connect(pageApp: any, shellApp: any, win: any, basePath?: string): () => void;
 }
 /** The shell's behavior, imported by the page.js of every page that uses it. Its content is `{ name, view }` exported from view.js. */
 export function defineShell(definition: ShellDefinition): Shell;

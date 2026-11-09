@@ -32,7 +32,7 @@ Framework-neutral. Find the row that describes what the old code **does**, not w
 | Fragment | An array of children. |
 | Raw HTML injection | Not available. Model the content as spec, or put it on the decisions list. |
 | Refs to focus an element | Give it an `id`; `focus: true` focuses it. |
-| Icons | Text, an inline image with `alt`, or a `children` node. SVG tags are not in the grammar: see section 6. |
+| Icons | A drawing is SVG (`svg`, `g`, `path`, `circle`, `rect`, `use`, ...; recipe `svg-icons`), or text, an inline image with `alt`, or a `children` node. An icon library is not in the grammar: see section 6. |
 
 ## 3. State
 
@@ -94,7 +94,7 @@ Names: namespaces and keys are identifiers (letters and digits, lowercase first)
 | Portals, tooltips and popovers placed by a positioning library | Content renders in place; CSS positions it. Native `dialog` and `details` for overlays. Recipe `modal`. Say so in `MIGRATION.md`. |
 | Virtualized lists | Not built; every row renders. Option: paginate in `derive`, or ask for the feature. |
 | HTML5 drag and drop | Not in the grammar. Recipe `drag-reorder` (pointer events). |
-| SVG, canvas, video, audio elements | Not in the grammar. Option: a plugin drawing into one element, or an `img` pointing at a file. |
+| SVG, canvas, video, audio elements | SVG is a closed subset for icons and simple drawings (`svg`, `g`, `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, `polygon`, `use`; recipe `svg-icons`). Canvas and media elements are not in the grammar: a plugin drawing into one element, or an `img` pointing at a file. |
 | Raw HTML strings | Not available. Model as spec. |
 | Scoped CSS, CSS-in-JS | Not available. |
 | Template DSL, directives, two-way binding sugar | Not built, on purpose. |

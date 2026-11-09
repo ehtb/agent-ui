@@ -15,7 +15,7 @@
 // need a second render path kept in lockstep with the first. State travels in a JSON script (see src/hydrate.js).
 
 import { createServerDocument, serialize } from '../src/server-dom.js';
-import { fail } from '../src/messages.js';
+import { didYouMean, fail } from '../src/messages.js';
 import { describeValue, isPlainObject } from '../src/spec-core.js';
 import { APP_ELEMENT_ID, SHELL_ELEMENT_ID } from '../src/hydrate.js';
 import { stateScriptHtml } from '../src/document-markup.js';
@@ -167,19 +167,25 @@ const publicStateFor = async (state, stateForBrowser, request) => {
   }
   for (const [namespace, values] of Object.entries(projected)) {
     if (!Object.hasOwn(state, namespace)) {
-      fail('renderPage stateForBrowser', `returned the namespace "${namespace}", which the page did not declare`, 'Return only namespaces and keys of the rendered state (a hook may remove a namespace, not add one); a namespace the browser needs must be declared in the page');
+      fail('renderPage stateForBrowser', `returned the namespace "${namespace}", which the page did not declare`, `${didYouMean(namespace, Object.keys(state))}Return only namespaces and keys of the rendered state (a hook may remove a namespace, not add one); a namespace the browser needs must be declared in the page`);
     }
     if (!isPlainObject(values)) fail('renderPage stateForBrowser', `returned "${namespace}" as ${describeValue(values)}, not an object of state keys`, `Return { ${namespace}: { ... } } with the keys of that namespace, or leave the namespace out`);
     for (const key of Object.keys(values)) {
       if (!Object.hasOwn(state[namespace], key)) {
-        fail('renderPage stateForBrowser', `returned "${namespace}.${key}", which is not a state key the page declared`, 'Return only namespaces and keys of the rendered state (a hook may remove a key, not add one); a key the browser needs must be declared in the page');
+        fail('renderPage stateForBrowser', `returned "${namespace}.${key}", which is not a state key the page declared`, `${didYouMean(key, Object.keys(state[namespace]))}Return only namespaces and keys of the rendered state (a hook may remove a key, not add one); a key the browser needs must be declared in the page`);
       }
     }
   }
   return projected;
 };
 
-export const renderPage = async (create, { url = '/', fetchFunction = null, timeoutMs = 2000, dev, initialState = {}, createShell = null, request = null, stateForBrowser = null, signal = null, basePath = '' } = {}) => {
+const RENDER_PAGE_OPTIONS = ['url', 'fetchFunction', 'timeoutMs', 'dev', 'initialState', 'createShell', 'request', 'stateForBrowser', 'signal', 'basePath'];
+
+export const renderPage = async (create, options = {}) => {
+  for (const key of Object.keys(options)) {
+    if (!RENDER_PAGE_OPTIONS.includes(key)) fail('renderPage', `unknown option "${key}"`, `${didYouMean(key, RENDER_PAGE_OPTIONS)}Allowed options: ${RENDER_PAGE_OPTIONS.join(', ')}`);
+  }
+  const { url = '/', fetchFunction = null, timeoutMs = 2000, dev, initialState = {}, createShell = null, request = null, stateForBrowser = null, signal = null, basePath = '' } = options;
   if (typeof dev !== 'boolean') fail('renderPage', `dev is ${JSON.stringify(dev) ?? 'missing'}`, 'Pass dev: true to render with the development checks (agent-ui check) and dev: false to serve');
   if (!isBasePath(basePath)) fail('renderPage', `basePath ${JSON.stringify(basePath)} is not allowed`, BASE_PATH_ADVICE);
   // A request context carries the signal of its connection, so a host that passes `request` does not pass the same signal twice.
@@ -194,6 +200,9 @@ export const renderPage = async (create, { url = '/', fetchFunction = null, time
   const environment = { win: createServerWindow(withBase(basePath, url)), fetchFunction: fetchWithRequestSignal(requestFetch, abortSignal), dev, debug: false, isServerRendering: true, serverRendered: false, basePath };
   let shellApp = null;
   let ui = null;
+  // A TypeError from the page, its plugins or its shell may come from the server window; a TypeError from a host hook
+  // (stateForBrowser) is the hook's own, and blaming the server window would send the author to the wrong file.
+  let inPage = true;
   const onAbort = () => {
     // With the app gone, no resource can dispatch its late failure into a page nobody will receive. Cleanup that throws must
     // not replace the abort that the caller is about to see.
@@ -219,6 +228,7 @@ export const renderPage = async (create, { url = '/', fetchFunction = null, time
       await settleWithAbort(ui, abortSignal);
     }
     if (abortSignal?.aborted) throw renderAbortedError();
+    inPage = false;
     const state = ui.state();
     const stateForDocument = await publicStateFor(state, stateForBrowser, request);
     // The hook may await the network: a visitor who left during it must not get a result from an app that is already destroyed.
@@ -232,7 +242,7 @@ export const renderPage = async (create, { url = '/', fetchFunction = null, time
     } catch {
       // reported by the error below
     }
-    throw explainServerFailure(error);
+    throw inPage ? explainServerFailure(error) : error;
   } finally {
     abortSignal?.removeEventListener('abort', onAbort);
   }

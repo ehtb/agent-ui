@@ -630,7 +630,8 @@ test('small chunks fold into a chunk of their own layer or the app\'s, never int
     }
     // The page's own chunk took in its small package parts: the package comes before the page code that imports it.
     assert.ok(chunks.a.modules.indexOf('node_modules/@scope/both/extra.js') < chunks.a.modules.indexOf('a/main.js'), chunks.a.modules.join(', '));
-    assert.match(chunks.a.reason, /\(with package big\)/); // big had already taken in the small part of @scope/both
+    // big had already taken in the small part of @scope/both, and the report keeps both names when big folds too
+    assert.match(chunks.a.reason, /\(with package big and package @scope\/both\)/);
     assert.ok(chunks['shared-a-b'], 'the app\'s shared code is not folded into the framework chunk of the same pages');
     for (const page of ['a', 'b']) await import(pathToFileURL(join(project.projectRoot, 'out', chunks[page].javascript)).href);
     assert.deepEqual(globalThis.results, { a: 'function,5000,both,extra,shared', b: 'function,both,shared' });

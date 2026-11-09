@@ -81,8 +81,10 @@ export class DomNode {
     this.detach();
     domHooks.mutated();
   }
-  // Puts `node` where this one is and takes this one out (the browser's Element.replaceWith, for one node).
+  // Puts `node` where this one is and takes this one out (the browser's Element.replaceWith, for one node). A detached node is
+  // left alone, as the browser does, instead of failing on a parent that is not there.
   replaceWith(node) {
+    if (!this.parentNode) return;
     this.parentNode.insertBefore(node, this);
     this.remove();
   }
@@ -134,7 +136,15 @@ export class DomText extends DomNode {
   }
 }
 
-// Selector support is limited to "[attribute]" in closest/querySelectorAll, which is all the runtime needs.
+// The attribute selectors closest() and querySelectorAll() understand: "[name]" and '[name="value"]'. Anything else is refused
+// with the selector, so a selector that would never match does not read as "no element" (the runtime itself only uses "[name]").
+const attributeSelector = (selector, where) => {
+  const found = typeof selector === 'string' ? /^\[([^\]="'\s]+)(?:="([^"]*)")?\]$/.exec(selector.trim()) : null;
+  if (!found) throw new Error(`${where}("${selector}"): this DOM matches attribute selectors only, "[name]" and '[name="value"]'. Use findById(id) or the tree of children for anything else`);
+  return { name: found[1], value: found[2] };
+};
+const matchesAttribute = (element, { name, value }) => (value === undefined ? name in element.attributes : element.attributes[name] === value);
+
 export class DomElement extends DomNode {
   nodeType = 1;
   constructor(tagName, ownerDocument = null) {
@@ -209,18 +219,18 @@ export class DomElement extends DomNode {
     return null;
   }
   closest(selector) {
-    const attribute = selector.slice(1, -1);
+    const attribute = attributeSelector(selector, 'closest');
     for (let element = this; element; element = element.parentElement) {
-      if (attribute in element.attributes) return element;
+      if (matchesAttribute(element, attribute)) return element;
     }
     return null;
   }
   querySelectorAll(selector) {
-    const attribute = selector.slice(1, -1);
+    const attribute = attributeSelector(selector, 'querySelectorAll');
     const found = [];
     const visit = (node) => {
       for (let child = node.firstChild; child; child = child.nextSibling) {
-        if (child instanceof DomElement && attribute in child.attributes) found.push(child);
+        if (child instanceof DomElement && matchesAttribute(child, attribute)) found.push(child);
         visit(child);
       }
     };

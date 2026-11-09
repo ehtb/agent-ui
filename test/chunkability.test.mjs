@@ -23,7 +23,7 @@ const PRIMITIVES = ['src/messages.js', 'src/spec-core.js'];
 const EXPECTED = {
   'src/ui.js': RUNTIME,
   'src/url-pattern.js': ['src/url-pattern.js'],
-  'src/resources.js': ['src/resources.js', 'src/messages.js'],
+  'src/resources.js': ['src/resources.js', 'src/messages.js', 'src/spec-core.js'],
   'src/window-events.js': ['src/window-events.js', 'src/window-events-checks.js', 'src/grammar.js', 'src/handler-checks.js', 'src/namespaces.js', ...PRIMITIVES],
   'src/spec-tools.js': ['src/spec-tools.js', 'src/spec-walk.js', 'src/grammar.js', 'src/handler-checks.js', 'src/error-messages.js', 'src/validate.js', 'src/namespaces.js', ...PRIMITIVES],
   'src/components.js': ['src/components.js', ...PRIMITIVES],
@@ -38,11 +38,12 @@ const EXPECTED = {
   'src/hydrate.js': ['src/hydrate.js', 'src/base-path.js'],
   // A shell brings the runtime and syncApps, and the navigation plugin the pages module: only a page that lists a shell downloads them.
   'src/shell.js': ['src/shell.js', 'src/shell-checks.js', 'src/sync-apps.js', 'src/sync-apps-checks.js', 'src/hydrate.js', ...RUNTIME],
-  'src/navigation.js': ['src/navigation.js', 'src/document-markup-reader.js', 'src/pages.js', 'src/pages-checks.js', 'src/pages-server.js', 'src/hot.js', 'src/head.js', 'src/head-reader.js', 'src/head-document.js', 'src/url-pattern.js', 'src/hydrate.js', ...RUNTIME],
+  'src/navigation.js': ['src/navigation.js', 'src/document-markup-reader.js', 'src/pages.js', 'src/pages-checks.js', 'src/pages-server.js', 'src/hot.js', 'src/head.js', 'src/head-reader.js', 'src/head-document.js', 'src/html-escape.js', 'src/url-pattern.js', 'src/hydrate.js', ...RUNTIME],
   'src/devtools.js': ['src/devtools.js'],
   // The plugins behind `follow` and the sliding of rows: only a page that lists them downloads them.
-  'src/follow.js': ['src/follow.js'],
-  'src/moves.js': ['src/moves.js'],
+  'src/follow.js': ['src/follow.js', 'src/spec-core.js'],
+  // Both motion plugins share the primitives the runtime already loads (nextFrame, the page-plugin mark).
+  'src/moves.js': ['src/moves.js', 'src/spec-core.js'],
 };
 
 for (const [entry, modules] of Object.entries(EXPECTED)) {
@@ -52,7 +53,7 @@ for (const [entry, modules] of Object.entries(EXPECTED)) {
 }
 
 test('the pages entry is the app() runtime, hydration, the lazily fetched devtools (debug: true), the URL patterns, and the two halves production builds swap for stubs (page checks, server-only parts)', () => {
-  assert.deepEqual(reached('src/pages.js'), ['src/base-path-checks.js', 'src/base-path.js', 'src/devtools.js', 'src/error-messages.js', 'src/errors.js', 'src/grammar.js', 'src/handler-checks.js', 'src/head-document.js', 'src/head.js', 'src/hot.js', 'src/hydrate.js', 'src/messages.js', 'src/namespaces.js', 'src/pages-checks.js', 'src/pages-server.js', 'src/pages.js', 'src/runtime-checks.js', 'src/spec-core.js', 'src/ui.js', 'src/url-pattern.js', 'src/validate.js']);
+  assert.deepEqual(reached('src/pages.js'), ['src/base-path-checks.js', 'src/base-path.js', 'src/devtools.js', 'src/error-messages.js', 'src/errors.js', 'src/grammar.js', 'src/handler-checks.js', 'src/head-document.js', 'src/head.js', 'src/hot.js', 'src/html-escape.js', 'src/hydrate.js', 'src/messages.js', 'src/namespaces.js', 'src/pages-checks.js', 'src/pages-server.js', 'src/pages.js', 'src/runtime-checks.js', 'src/spec-core.js', 'src/ui.js', 'src/url-pattern.js', 'src/validate.js']);
 });
 
 test('no browser-side module imports Node built-ins, the server or the build', () => {

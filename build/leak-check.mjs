@@ -5,14 +5,15 @@
 const VIEW_ONLY_MODULE = /(^|\/)src\/(spec|components)\.js$/;
 const VIEW_FILE = /(^|\/)view\.js$/;
 
-// The shortest chain of imports from an entry to `target`, as paths.
+// The shortest chain of imports from an entry to `target`, as paths. A dynamic import() reaches the module too, so it is part of
+// the chain (a module only imported that way still makes the browser download the builders).
 const chainTo = (graph, target) => {
   const parents = new Map(graph.roots.filter((root) => root.kind === 'entry').map((root) => [root.path, null]));
   const queue = [...parents.keys()];
   for (let index = 0; index < queue.length; index++) {
     const path = queue[index];
     if (path === target) break;
-    for (const dependency of graph.modules.get(path).staticDependencies) {
+    for (const dependency of [...graph.modules.get(path).staticDependencies, ...graph.modules.get(path).dynamicDependencies]) {
       if (parents.has(dependency)) continue;
       parents.set(dependency, path);
       queue.push(dependency);
@@ -23,7 +24,13 @@ const chainTo = (graph, target) => {
   return chain;
 };
 
+// A development entry (build/pages.mjs writes it into .agent-ui/) imports view.js on purpose and builds the spec in the browser,
+// so that build is not warned about. Only the entry itself is looked at: a page.js that imports its own view.js in a production
+// build is exactly the mistake this check exists for, and must not turn the check off.
+const isDevelopmentEntry = (graph, path) =>
+  /(^|\/)\.agent-ui\/[^/]+\/main\.js$/.test(path) && (graph.modules.get(path)?.staticDependencies ?? []).some((dependency) => VIEW_FILE.test(dependency));
+
 export const findViewCodeInBrowserBundle = (graph) => {
-  if ([...graph.modules.keys()].some((path) => VIEW_FILE.test(path))) return [];
+  if (graph.roots.some((root) => root.kind === 'entry' && isDevelopmentEntry(graph, root.path))) return [];
   return [...graph.modules.keys()].filter((path) => VIEW_ONLY_MODULE.test(path)).map((path) => `${path} is in a browser bundle (${chainTo(graph, path).join(' -> ')}). It builds specs and belongs to view.js only, so the page downloads code it never runs. Move what imports it into a module that only view.js imports`);
 };

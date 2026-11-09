@@ -1,4 +1,5 @@
 // What the handlers read from a request before they trust it.
+import { fail } from '../src/messages.js';
 
 // A redirect or a rendered form outcome stays on this site: a local path starts with "/", is not "//" (another host),
 // has no backslash, whitespace, control character or non-ASCII character, and does not start with an encoded slash or
@@ -53,9 +54,11 @@ export const requestContextForUrl = (context, url) => {
 // under its own name (DNS rebinding) sends that name as the Host header, and is refused: it must not read the project's sources or API.
 export const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
 
-// `hosts` is a list of host names, or null for "any" (a server that was told to serve the network).
+// `hosts` is a list of host names, or null for "any" (a server that was told to serve the network). A string is not a list: it
+// would make `includes` a substring test ("localhost" would accept "host"), so a handler refuses it when it is created.
 export const isAllowedHost = (request, hosts) => {
   if (!hosts) return true;
+  if (!Array.isArray(hosts)) return false; // a string that slipped past checkHosts: refuse rather than compare substrings
   try {
     return hosts.includes(new URL(`http://${request.headers.host}`).hostname.toLowerCase());
   } catch {
@@ -65,3 +68,13 @@ export const isAllowedHost = (request, hosts) => {
 
 // The hosts a server listening on `address` answers to: this machine's names for a loopback address, any for the rest.
 export const hostsFor = (address) => (['127.0.0.1', 'localhost', '::1'].includes(address) ? LOOPBACK_HOSTS : null);
+
+// Checks the `hosts` option once, when the handler is created, so a string (or a list with a non-string) is refused at startup
+// instead of being compared as a substring on every request.
+export const checkHosts = (hosts, where) => {
+  if (hosts === null || hosts === undefined) return null;
+  if (!Array.isArray(hosts) || hosts.some((host) => typeof host !== 'string' || !host)) {
+    fail(where, `"hosts" is ${JSON.stringify(hosts)}, not a list of host names`, 'Pass a list such as hostsFor("127.0.0.1") (localhost, 127.0.0.1, [::1]), hosts: ["example.com"], or null to answer any Host header');
+  }
+  return hosts;
+};

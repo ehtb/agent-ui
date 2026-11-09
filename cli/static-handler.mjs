@@ -5,8 +5,8 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { BadRequestError, readPathname, resolveInside } from './safe-path.mjs';
-import { compileUrlPattern } from '../src/url-pattern.js';
-import { isAllowedHost, parseRequestUrl } from '../server/request.mjs';
+import { compileUrlPattern, withoutTrailingSlash } from '../src/url-pattern.js';
+import { checkHosts, isAllowedHost, parseRequestUrl } from '../server/request.mjs';
 import { MIME_TYPES, SECURITY_HEADERS, isFilePath } from '../server/file-types.mjs';
 import { withoutBase } from '../src/base-path.js';
 import { fail } from '../src/messages.js';
@@ -27,6 +27,7 @@ import { BASE_PATH_ADVICE, isBasePath } from '../src/base-path-checks.js';
 // host's own routes and other middleware get them. createStaticServer is the same listener on its own http server.
 export const createStaticHandler = (rootDirectory, { transformHtml = null, rewrites = () => [], assetsDir = 'assets', intercept = null, onError = console.error, hosts = null, basePath = '' } = {}) => {
   if (!isBasePath(basePath)) fail('createStaticHandler', `basePath ${JSON.stringify(basePath)} is not allowed`, BASE_PATH_ADVICE);
+  const allowedHosts = checkHosts(hosts, 'createStaticHandler');
   // A rewrite pattern is compiled once: the list is read per request (the dev server's pages change when a page folder is added), but a
   // pattern changes only when its page does.
   const matchers = new Map();
@@ -39,7 +40,7 @@ export const createStaticHandler = (rootDirectory, { transformHtml = null, rewri
     return matcher;
   };
   const serve = async (request, response, next) => {
-    if (!isAllowedHost(request, hosts)) return void response.writeHead(421, { 'content-type': 'text/plain; charset=utf-8', ...SECURITY_HEADERS }).end('misdirected request: this server answers to its own host names only');
+    if (!isAllowedHost(request, allowedHosts)) return void response.writeHead(421, { 'content-type': 'text/plain; charset=utf-8', ...SECURITY_HEADERS }).end('misdirected request: this server answers to its own host names only');
     const wirePath = readPathname(request.url);
     if (intercept && (await intercept(request, response, wirePath))) return;
     const urlPath = withoutBase(basePath, wirePath);
@@ -55,7 +56,7 @@ export const createStaticHandler = (rootDirectory, { transformHtml = null, rewri
     }
     // Patterns decode each segment themselves, so they match the path as sent (an encoded "%2F" stays inside one parameter).
     const rawPath = withoutBase(basePath, parseRequestUrl(request.url).pathname) ?? '/';
-    const rawWithoutSlash = rawPath.length > 1 && rawPath.endsWith('/') ? rawPath.slice(0, -1) : rawPath;
+    const rawWithoutSlash = withoutTrailingSlash(rawPath);
     const rewrite = !isFilePath(urlPath) && rewrites().find(({ pattern }) => matcherFor(pattern).match(rawWithoutSlash));
     const requested = resolveInside(rootDirectory, rewrite ? rewrite.page : urlPath === '/' ? 'index.html' : urlPath);
     if (!requested) {

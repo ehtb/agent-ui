@@ -2,6 +2,7 @@
 // the full description, including the text of scripts and styles, which only a server writes. Production browser bundles never
 // include this module: it is reached through src/pages-server.js and src/pages-checks.js, which they replace by stubs (a
 // development bundle keeps the checks, so it holds this module too).
+import { escapeJsonForScript } from './html-escape.js';
 import { valueForState } from './spec-core.js';
 import { resolveHead } from './head.js';
 import { fail } from './messages.js';
@@ -23,7 +24,7 @@ const textOf = (node, attributes, state, where) => {
   const isData = node.tag === 'script' && DATA_SCRIPT_TYPES.includes(attributes.type);
   const value = isData ? valueForState(node.children, state) : node.children;
   const text = typeof value === 'string' ? value : JSON.stringify(value ?? null);
-  if (isData) return text.replace(/</g, '\\u003c').replace(/[\u2028\u2029]/g, (character) => `\\u${character.charCodeAt(0).toString(16)}`);
+  if (isData) return escapeJsonForScript(text);
   if (closingTag(node.tag).test(text)) fail(where, `the text of a ${node.tag} contains "</${node.tag}" or "<!--"`, `Move that text into a file and load it with ${node.tag === 'script' ? '`src`' : 'a `link`'}`);
   return text;
 };

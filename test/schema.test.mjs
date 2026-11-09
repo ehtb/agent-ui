@@ -25,6 +25,8 @@ test('structural mistakes are rejected', () => {
   reject({ tag: 'div', children: { equals: [1] } }, 'operator arity');
   reject({ each: 'items', template: { tag: 'li' } }, 'each without key');
   reject({ when: { state: 'a' }, kids: [] }, 'unknown when key');
+  reject({ tag: 'button', on: { 'click.Enter': ['a.b', {}] }, children: 'x' }, 'a key chord is only for keydown and keyup');
+  reject({ when: { state: 'a.b' } }, 'when without children or otherwise');
   reject({ tag: 'div', transition: 0 }, 'transition must be positive');
   reject({ tag: 'p', children: { state: 'a' } }, 'state binding without a namespace');
   reject({ tag: 'p', children: { state: 'form.rows..id' } }, 'empty path segment');

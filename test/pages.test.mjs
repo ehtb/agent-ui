@@ -2,8 +2,11 @@
 // and the static URLs derived from a page.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { contentOf, definePage } from '../src/pages.js';
+import { contentOf, definePage, pageOf } from '../src/pages.js';
 import { validate } from '../src/validate.js';
+import { app } from '../src/ui.js';
+import { follow, withFollow } from '../src/follow.js';
+import { resources } from '../src/resources.js';
 import { createRoot, createWindow } from './support/dom-shim.mjs';
 
 const baseView = { tag: 'section', id: 'the-view', children: 'content' };
@@ -197,6 +200,28 @@ test('contentOf takes the exports of a view.js and refuses any other', () => {
   const layout = (content) => content;
   assert.deepEqual(contentOf({ view: baseView, layout }, 'pages/view.js'), { view: baseView, layout, pending: undefined, shell: undefined });
   expectError(() => contentOf({ view: baseView, pendng: baseView }, 'pages/about/view.js'), /pages\/about\/view\.js: unknown export "pendng"\. Did you mean "pending"\? Export only view, layout, pending, shell, paths from view\.js/);
+});
+
+test('pageOf reads the page of page.js and names the file when the export is misspelt or belongs to view.js', () => {
+  expectError(() => pageOf({ pages: basePage() }, 'pages/about/page.js'), /pages\/about\/page\.js: does not export "page"\. Did you mean "page"\? Write `export const page = \{ head: \{ title: '\.\.\.' \} \}` in pages\/about\/page\.js/);
+  expectError(() => pageOf({ view: baseView }, 'pages/about/page.js'), /pages\/about\/page\.js: exports "view" instead of "page"\. page\.js holds the page's behavior: write `export const page = \{ head: \{ title: '\.\.\.' \} \}`\. Export `view` from the view\.js next to it instead/);
+  assert.equal(pageOf({ page: basePage() }, 'pages/about/page.js').head.title, 'A page');
+});
+
+test('plugins go on the side they belong to: a page factory in app(), a plugin in page.js, resources without withResources', () => {
+  // A page factory in app() would return its plugin and install nothing: the mark says so.
+  expectError(() => app({ dev: true, spec: baseView, root: createRoot(), plugins: [withFollow] }), /app: plugins\[0\] \("withFollow"\) is a page plugin factory\. A factory \(environment\) => plugin belongs in page\.js plugins; app\(\) takes the plugin itself: follow, moves, resources\(fetchFunction\), navigation/);
+  const environment = () => ({ root: createRoot(), win: createWindow('/'), fetchFunction: async () => null, dev: true });
+  // A page lists a factory, not the plugin: `follow` called with the environment fails on the api, with the way forward.
+  expectError(() => define({ plugins: [() => 'nope'] }).create(environment()), /page "\/": plugins\[0\] returned string, not a plugin\. A page lists plugin factories, \(environment\) => plugin, for example plugins: \[withResources\]/);
+  expectError(() => define({ plugins: [follow] }).create(environment()), /page "\/": plugins\[0\] \("follow"\) threw api\.handleProperty is not a function\. A page lists plugin factories/);
+  // resources() in page.js takes the environment object as its fetch function: named when it is installed.
+  const box = {
+    state: { data: null },
+    actions: { loading: { args: {}, run: () => {} }, loaded: { args: { data: 'json' }, run: () => {} }, failed: { args: { message: 'string' }, run: () => {} } },
+    resources: [{ watch: [], request: () => ({ url: '/x' }), onStart: 'loading', onSuccess: 'loaded', onError: 'failed' }],
+  };
+  expectError(() => define({ namespaces: { box }, plugins: [resources] }).create(environment()), /^resources: fetchFunction is an object, not a function\. In a page\.js write `plugins: \[withResources\]`/);
 });
 
 test('a page path is judged by the grammar of URL patterns: its own mistakes are named, with the pattern\'s message', () => {

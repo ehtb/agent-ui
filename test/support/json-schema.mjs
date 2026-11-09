@@ -10,7 +10,9 @@ const typeOf = (value) => (value === null ? 'null' : Array.isArray(value) ? 'arr
 export const matchesSchema = (value, schema) => {
   const matches = (candidate, node) => {
     if (node.$ref) return matches(candidate, node.$ref.split('/').slice(1).reduce((target, key) => target[key], schema));
-    if (node.anyOf) return node.anyOf.some((option) => matches(candidate, option));
+    // anyOf is one keyword among the node's others (a `when` says anyOf children-or-otherwise *and* requires `when`), so it is a
+    // check like the rest, not an early answer.
+    if (node.anyOf && !node.anyOf.some((option) => matches(candidate, option))) return false;
     if (node.enum) return node.enum.includes(candidate);
     if (node.type && ![].concat(node.type).includes(typeOf(candidate))) return false;
     if (typeOf(candidate) === 'string' && node.minLength && candidate.length < node.minLength) return false;

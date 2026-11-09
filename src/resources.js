@@ -29,6 +29,7 @@
 // stops too; the aborted request's rejection is never reported. A fetchFunction that ignores `signal` still works.
 
 import { didYouMean, fail, failOwnedTwice } from './messages.js';
+import { markPagePlugin } from './spec-core.js';
 
 const describeArgs = (args) => JSON.stringify(args || {});
 const REQUEST_KEYS = ['url', 'method', 'headers', 'body'];
@@ -44,11 +45,17 @@ const lifecycleOf = (definition) => [definition.onStart, definition.onSuccess, d
 
 // The plugin as a page lists it (`plugins: [withResources]`, src/pages.js): a page that imports it is the page that gets the
 // resources code, and a page without resources downloads none of it.
-export const withResources = ({ fetchFunction, win, serverRendered = false }) => resources(fetchFunction, { win, serverRendered });
+export const withResources = markPagePlugin(function withResources({ fetchFunction, win, serverRendered = false }) {
+  return resources(fetchFunction, { win, serverRendered });
+});
 
 // `serverRendered` is true when the app started from state a server wrote into the document (src/hydrate.js): a resource with
 // `revalidate: 'never'` then trusts that state instead of loading it a second time on mount.
 export const resources = (fetchFunction, { win = globalThis, serverRendered = false } = {}) => (api) => {
+  // The page form (withResources) passes the environment's fetch; `resources` itself takes the function to call, not an environment.
+  // A page that lists `resources` instead of `withResources` reaches this with the environment object, and is told the fix. A null
+  // or other missing function is named by the resource's own check below, with the resource it belongs to.
+  if (fetchFunction !== null && typeof fetchFunction === 'object') fail('resources', 'fetchFunction is an object, not a function', "In a page.js write `plugins: [withResources]`, which passes the environment's fetchFunction; in app() write resources(fetchFunction), the function itself");
   api.claim('resources');
   const declared = api.actions();
   const stateKeys = Object.entries(api.state()).flatMap(([namespace, values]) => Object.keys(values).map((key) => `${namespace}.${key}`));

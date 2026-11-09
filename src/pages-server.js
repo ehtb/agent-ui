@@ -9,7 +9,8 @@ import { describeDocument } from './head-document.js';
 // The value in a status error, even when JSON.stringify cannot write it (a BigInt, a cycle, a symbol).
 const statusText = (answer) => {
   try {
-    return JSON.stringify(answer) ?? describeValue(answer);
+    // JSON.stringify writes NaN and Infinity as "null", which would name a value the author never returned.
+    return (typeof answer === 'number' ? String(answer) : JSON.stringify(answer)) ?? describeValue(answer);
   } catch {
     return describeValue(answer);
   }

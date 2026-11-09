@@ -7,6 +7,6 @@ export { build, type BuildOptions, type BuildPage, type BuildChunk, type BuildMa
 /** The pages below pages/, most specific URL first. */
 export function discoverPages(projectRoot: string, directory?: string): { name: string; path: string; folder: string; file: string; viewFile: string; stylesheet: string | null }[];
 /** Renders the pages into the built site. Returns the URLs that were written. */
-export function prerender(options: { projectRoot: string; outDir: string; fetchFunction?: BuildConfig['fetchFunction']; pages: PageRecord[]; cacheBust?: unknown; timeoutMs?: number; stateForBrowser?: BuildConfig['stateForBrowser'] }): Promise<string[]>;
+export function prerender(options: { projectRoot: string; outDir: string; fetchFunction?: BuildConfig['fetchFunction']; pages: PageRecord[]; cacheBust?: unknown; timeoutMs?: number; stateForBrowser?: BuildConfig['stateForBrowser']; basePath?: string }): Promise<string[]>;
 /** The table `agent-ui build` prints. */
 export function formatReport(manifest: BuildManifest): string;

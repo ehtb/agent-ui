@@ -20,6 +20,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { toPosixPath } from '../build/import-path.mjs';
 
 const CLIENT_PATH = '/__dev/client.js';
 const EVENTS_PATH = '/__dev/events';
@@ -35,7 +36,7 @@ const fingerprintStaticFiles = (directory, assetsDir) => {
   const walk = (folder) => {
     for (const entry of readdirSync(folder, { withFileTypes: true }).sort((first, second) => first.name.localeCompare(second.name))) {
       const path = join(folder, entry.name);
-      const name = relative(directory, path).split('\\').join('/');
+      const name = toPosixPath(relative(directory, path));
       if (entry.isDirectory()) {
         if (name !== assetsDir) walk(path);
       } else if (name !== 'manifest.json' && !name.endsWith('.html')) {
@@ -78,7 +79,8 @@ export const versionOutput = ({ directory, manifest, previous = null }) => {
   );
 
   // A static import or re-export starts its line (generated chunks are written that way); a dynamic import can be anywhere.
-  const IMPORT = /(^[ \t]*(?:import|export)\b[^'"\n;]*?\bfrom\s*|\bimport\(\s*)(["'])\.\/([\w.-]+\.js)\2/gm;
+  // A chunk file is named after a page ("event-id"), so "~" is a legal character in its name (build/pages.mjs).
+  const IMPORT = /(^[ \t]*(?:import|export)\b[^'"\n;]*?\bfrom\s*|\bimport\(\s*)(["'])\.\/([\w.~-]+\.js)\2/gm;
   for (const name of names) {
     const text = texts[name].replace(IMPORT, (whole, before, quote, file) => (nameOfFile[file] ? `${before}${quote}./${file}?v=${versions[nameOfFile[file]]}${quote}` : whole));
     writeFileSync(fileOf(chunks[name].javascript), text);

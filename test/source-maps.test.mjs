@@ -207,6 +207,7 @@ test('a transform\'s result has one form for each call: the code, or { code, map
   try {
     assert.match(checkConfig({ sourceMaps: 'yes' })[0], /"sourceMaps": must be true or false/);
     rejects({ sourceMaps: true, transform: (code) => code }, /transform \(javascript of chunk "main"\): returned string, and with sourceMap: true \(sourceMaps is on\) it must return \{ code, map \}.*Write transform:/);
+    rejects({ sourceMaps: true, transform: async (code) => ({ code, map: reflow(code).map }) }, /transform \(javascript of chunk "main"\): returned a Promise\. The build cannot wait here, so transform must be synchronous: call the minifier's synchronous entry \(esbuild: transformSync, not transform\)/);
     rejects({ transform: (code) => ({ code, map: '{}' }) }, /transform \(javascript of chunk "main"\): returned object, and with sourceMap: false it must return the code as a string/);
     rejects({ sourceMaps: true, transform: (code) => ({ code, map: reflow(code).map, mapping: 1 }) }, /unknown key "mapping" in the result\. Return \{ code, map \} and nothing else/);
     rejects({ sourceMaps: true, transform: (code) => ({ code: 7, map: reflow(code).map }) }, /"code" must be the minified code as a string/);

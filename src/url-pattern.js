@@ -22,6 +22,10 @@ export const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const PARAM_SOURCE = '([^/]+)';
 const REST_SOURCE = '([^/]+(?:/[^/]+)*)';
 
+// A visitor may type a trailing slash ("/product/3/" is "/product/3"), and so may a link. Every place that matches a location
+// against a pattern normalizes it with this: the page, the render server, the static handler and `agent-ui check`.
+export const withoutTrailingSlash = (pathname) => (pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname);
+
 // Decodes one captured segment; null when it is not valid percent-encoding (such a location matches nothing).
 const decodeSegment = (segment) => {
   try {

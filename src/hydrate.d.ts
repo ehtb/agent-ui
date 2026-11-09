@@ -6,4 +6,4 @@ export const SHELL_ELEMENT_ID: 'shell';
 export const STATE_ELEMENT_ID: 'agent-ui-state';
 export function readServerState(doc?: { getElementById(id: string): { textContent: string | null } | null }, elementId?: string): Record<string, Record<string, any>>;
 /** `dev` is written by the generated entry: true in a development build, false in a production one. */
-export function browserEnvironment(options: { dev: boolean }): { root: Element | null; win: Window; fetchFunction: typeof fetch; initialState: Record<string, Record<string, any>>; serverRendered: boolean; dev: boolean; isServerRendering: false };
+export function browserEnvironment(options: { dev: boolean; basePath?: string }): { root: Element | null; win: Window; fetchFunction: typeof fetch; initialState: Record<string, Record<string, any>>; serverRendered: boolean; dev: boolean; isServerRendering: false; basePath: string };

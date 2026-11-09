@@ -42,6 +42,40 @@ export const parseArguments = (argv, accepted = {}, { command = 'agent-ui', posi
   return options;
 };
 
+// A port a server can listen on: a whole number from 1 to 65535 (0 is the operating system's "pick one", which only a library
+// call such as startDev({ port: 0 }) asks for; a command line that wrote it would print a port nobody chose).
+const MIN_PORT = 1;
+const MAX_PORT = 65535;
+const checkPort = (port, source, written) => {
+  if (!Number.isInteger(port) || port < MIN_PORT || port > MAX_PORT) {
+    const fix = source === 'PORT' ? 'Write PORT=8080, or pass --port=<number>' : 'Write --port=8080';
+    throw new UsageError(`${source} must be a whole number from ${MIN_PORT} to ${MAX_PORT}, got ${written}. ${fix}`);
+  }
+  return port;
+};
+
+// The port a listening command uses, in this order: --port, the PORT environment variable, 8080. An empty PORT counts as unset (a
+// container that does not care passes nothing); anything that is not a port is a usage error, so a misspelt PORT fails at start
+// instead of quietly listening on 8080.
+export const portFromOptions = (options, { fallback = 8080 } = {}) => {
+  if (options.port !== undefined) return checkPort(options.port, '--port', String(options.port));
+  const value = process.env.PORT;
+  if (value === undefined || value === '') return fallback;
+  if (!/^\d+$/.test(value)) throw new UsageError(`PORT must be a whole number from ${MIN_PORT} to ${MAX_PORT}, got "${value}". Write PORT=8080, or pass --port=<number>`);
+  return checkPort(Number(value), 'PORT', `"${value}"`);
+};
+
+// For a command's main: the port from its options and the environment, or a usage problem printed on one line and exit code 2.
+export const portOrExit = (options, settings = {}) => {
+  try {
+    return portFromOptions(options, settings);
+  } catch (error) {
+    if (!(error instanceof UsageError)) throw error;
+    console.error(`${settings.command ?? 'agent-ui'}: ${error.message}`);
+    process.exit(2);
+  }
+};
+
 // For the command line tools: print a usage problem as one line and stop with exit code 2.
 export const parseOrExit = (argv, accepted, settings) => {
   try {

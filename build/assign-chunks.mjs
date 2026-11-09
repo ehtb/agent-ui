@@ -221,6 +221,9 @@ export const assignChunks = (graph, { manualChunks = {}, minSharedChunkBytes = D
   if (minSharedChunkBytes > 0) {
     const small = [...chunks.values()].filter((chunk) => chunk.foldable && bytesOf(chunk) < minSharedChunkBytes).sort((first, second) => bytesOf(first) - bytesOf(second));
     for (const chunk of small) {
+      // The list is computed once, but a chunk may have folded into another one since, or grown past the limit by taking one in:
+      // a chunk that is no longer smaller than the limit stays as it is.
+      if (chunks.get(chunk.name) !== chunk || bytesOf(chunk) >= minSharedChunkBytes) continue;
       // A chunk of the same layer, or else the app's: the framework's chunks and a package's never take in code of another layer,
       // so an edit to the app or an update of one package leaves them as they are (and cached).
       const preference = (other) => (other.layer === chunk.layer ? 0 : 1);
@@ -237,6 +240,8 @@ export const assignChunks = (graph, { manualChunks = {}, minSharedChunkBytes = D
           // that imports it comes before the page's code).
           target.modulePaths.sort((first, second) => positionInOrder.get(first) - positionInOrder.get(second));
           target.reason = `${target.reason} (with ${chunk.summary})`;
+          // A chunk that folded one in says so if it is folded into another later: the report keeps every chunk's name.
+          if (target.summary) target.summary = `${target.summary} and ${chunk.summary}`;
           break;
         }
         // Undo: this fold would make two chunks import each other.

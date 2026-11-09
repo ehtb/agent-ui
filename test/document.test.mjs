@@ -18,6 +18,13 @@ test('title and description are replaced, not duplicated', () => {
   assert.doesNotMatch(second, /meta name="description"/);
 });
 
+test('head elements go before the end of <head>, even when a body script contains "</head>" in its text', () => {
+  const page = '<!doctype html><html><head><title>x</title></head><body><script>const s = "</head>";</script></body></html>';
+  const head = injectHead(page, { title: 'x', tags: [{ tag: 'meta', attributes: { name: 'robots', content: 'noindex' }, text: '' }] });
+  assert.ok(head.indexOf('name="robots"') < head.indexOf('</head>'), head);
+  assert.ok(head.includes('<script>const s = "</head>";</script>'), 'the script text is untouched');
+});
+
 test('renderDocument adds markup, state, title and description, and running it again changes nothing', () => {
   const result = { html: '<p>x</p>', stateScript: '<script type="application/json" id="agent-ui-state">{}</script>', state: { route: 'home' } };
   const describePage = () => ({ title: 'Home', description: 'Start' });
@@ -56,7 +63,26 @@ test('check renders every page in development mode and reports what is wrong', a
     assert.ok(withHook.problems.some((problem) => /stateForBrowser: returned the namespace "nope", which the page did not declare/.test(problem)), JSON.stringify(withHook.problems));
     assert.deepEqual((await run('bad.mjs')).problems, ['/ /: the page has no title']);
     assert.deepEqual((await run('bad-status.mjs')).problems, ['/ /: page "/": status(state) returned "ok", not an HTTP status. Return a whole number such as 200 or 404']);
+    // NaN is written as NaN, not as JSON's "null", so the message names what the page returned.
+    writePage(root, 'nan-status.mjs', { extra: ', status: () => NaN' });
+    assert.deepEqual((await run('nan-status.mjs')).problems, ['/ /: page "/": status(state) returned NaN, not an HTTP status. Return a whole number such as 200 or 404']);
     assert.deepEqual((await run('broken.mjs')).problems, ['/ /: spec problem at $.children.0']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('check starts a page with no paths at a sample URL, so a missing plugin is found without rendering its data', async () => {
+  const { checkProject } = await import('../cli/check.mjs');
+  const root = mkdtempSync(join(tmpdir(), 'agent-ui-unrendered-mount-'));
+  try {
+    // A namespace that declares resources, and no withResources: only a mount finds that.
+    const resources = ", namespaces: { box: { state: { data: null }, actions: { loading: { args: {}, run() {} }, loaded: { args: { data: 'json' }, run() {} }, failed: { args: { message: 'string' }, run() {} } }, resources: [{ watch: [], request: () => ({ url: '/x' }), onStart: 'loading', onSuccess: 'loaded', onError: 'failed' }] } }";
+    writePage(root, 'item.mjs', { path: '/item/:id', extra: resources });
+    const { problems, notes } = await checkProject({ root, config: { outDir: 'out', pages: [record('item-id', 'item.mjs', '/item/:id')] } });
+    assert.equal(problems.length, 1, JSON.stringify(problems));
+    assert.match(problems[0], /^pages\/item-id\/page\.js: at \/item\/1 \(a sample URL, because view\.js lists no `paths`\): cannot start the page: namespace "box": declares resources, but no plugin loads them/);
+    assert.deepEqual(notes, ['/item/:id has parameters and its view.js lists no `paths`, so check does not render it at its URLs (its spec is validated and it is started at a sample URL). Export paths = ["/item/1"] to render it']);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -102,7 +128,7 @@ test('check validates the spec of a page it does not render (a page with paramet
     assert.equal(pagesChecked, 0);
     assert.equal(problems.length, 1, JSON.stringify(problems));
     assert.match(problems[0], /^pages\/item-id\/page\.js: .*aria-label/);
-    assert.deepEqual(notes, ['/item/:id has parameters and its view.js lists no `paths`, so check does not render it (its spec is validated). Export paths = ["/item/1"] to render it']);
+    assert.deepEqual(notes, ['/item/:id has parameters and its view.js lists no `paths`, so check does not render it at its URLs (its spec is validated and it is started at a sample URL). Export paths = ["/item/1"] to render it']);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

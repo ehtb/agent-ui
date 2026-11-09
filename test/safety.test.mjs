@@ -724,6 +724,60 @@ test('transformResponse does not run for the 421 or the malformed-URL 400', asyn
   }
 });
 
+test('createSsrHandler and createStaticHandler refuse a "hosts" that is not a list, at startup (a string would be a substring test)', async () => {
+  const config = { pages: [], outDir: 'dist' };
+  await assert.rejects(createSsrHandler({ config, hosts: 'localhost' }), /createSsrHandler: "hosts" is "localhost", not a list of host names\. Pass a list such as hostsFor\("127\.0\.0\.1"\)/);
+  const { createStaticHandler } = await import('../cli/static-handler.mjs');
+  assert.throws(() => createStaticHandler(sandbox, { hosts: ['localhost', 7] }), /createStaticHandler: "hosts" is \["localhost",7\], not a list of host names/);
+});
+
+test('createSsrHandler checks the API module and createApi() before it answers anything', async () => {
+  const project = join(sandbox, 'api-shape');
+  mkdirSync(join(project, 'dist'), { recursive: true });
+  writeFileSync(join(project, 'no-create-api.mjs'), 'export const create = () => ({})');
+  await assert.rejects(createSsrHandler({ config: { api: 'no-create-api.mjs', pages: [], outDir: 'dist' }, root: project }), /createSsrHandler: config\.api "no-create-api\.mjs" does not export a function createApi\. Did you mean "create"\? Export `createApi\(\{ root \}\) => \{ handle, handleForm\?, apiBase\? \}`/);
+  writeFileSync(join(project, 'no-handle.mjs'), 'export const createApi = () => ({ handleForm: () => null })');
+  await assert.rejects(createSsrHandler({ config: { api: 'no-handle.mjs', pages: [], outDir: 'dist' }, root: project }), /createApi\(\) of no-handle\.mjs returned an object without "handle"\. .*Return \{ handle/);
+  writeFileSync(join(project, 'not-an-object.mjs'), 'export const createApi = () => "api"');
+  await assert.rejects(createSsrHandler({ config: { api: 'not-an-object.mjs', pages: [], outDir: 'dist' }, root: project }), /createApi\(\) of not-an-object\.mjs returned "api", not an object \{ handle, handleForm\?, apiBase\? \}/);
+});
+
+test('an API answer without a body is refused with the fix, instead of an empty 500 without a reason', async () => {
+  const project = join(sandbox, 'api-body');
+  mkdirSync(join(project, 'dist'), { recursive: true });
+  writeFileSync(join(project, 'api.mjs'), "export const createApi = () => ({ handle: ({ pathname }) => (pathname === '/api/empty' ? { status: 200 } : null) });");
+  const reported = [];
+  const handler = await createSsrHandler({ config: { api: 'api.mjs', pages: [], outDir: 'dist' }, root: project, onError: (error) => reported.push(error.message) });
+  const server = createServer((incoming, outgoing) => handler(incoming, outgoing));
+  await new Promise((done) => server.listen(0, done));
+  try {
+    const answer = await raw(server.address().port, '/api/empty');
+    assert.equal(answer.status, 500);
+    assert.match(reported[0], /api\.handle: answered status 200 without "body"\. Add body: the JSON value to send \(null for an empty one\), or answer a status that carries no body \(a 3xx redirect, 204 or 304\)/);
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+  }
+});
+
+test('a 3xx answer from api.handle may leave its body out: a redirect is answered with an empty body', async () => {
+  const project = join(sandbox, 'api-redirect');
+  mkdirSync(join(project, 'dist'), { recursive: true });
+  writeFileSync(join(project, 'api.mjs'), "export const createApi = () => ({ handle: ({ pathname }) => (pathname === '/api/old' ? { status: 302, headers: { location: '/api/new' } } : null) });");
+  const handler = await createSsrHandler({ config: { api: 'api.mjs', pages: [], outDir: 'dist' }, root: project });
+  const server = createServer((incoming, outgoing) => handler(incoming, outgoing));
+  await new Promise((done) => server.listen(0, done));
+  try {
+    const answer = await raw(server.address().port, '/api/old');
+    assert.equal(answer.status, 302);
+    assert.equal(answer.headers.location, '/api/new');
+    assert.equal(answer.text, '');
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+  }
+});
+
 test('createSsrHandler refuses an option it does not know, with a suggestion (the old fetchFunction option must not be ignored silently)', async () => {
   const config = { pages: [], outDir: 'dist' };
   await assert.rejects(createSsrHandler({ config, fetchFunction: async () => null }), /createSsrHandler: unknown option "fetchFunction"\. Allowed options: config, root, outDir, maxBodyBytes, timeoutMs, onTimeout, log, onError, hosts, initialStateFor, stateForBrowser, transformResponse\. The data requests of a page are answered by `fetchFunction` of the config/);

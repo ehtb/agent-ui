@@ -26,7 +26,7 @@
 //
 // This module is what a browser bundle holds. The server's half (the text of scripts and styles, the names the checks use) is
 // src/head-document.js, reached through src/pages-server.js and src/pages-checks.js, which production browser bundles replace by stubs.
-import { URL_PROPS, isUnsafeUrl, valueForState } from './spec-core.js';
+import { URL_PROPS, isUnsafeUrl, markPagePlugin, valueForState } from './spec-core.js';
 import { codedError } from './errors.js';
 import { BASE_PATH_ATTRIBUTES, withBaseInAttribute } from './base-path.js';
 
@@ -180,8 +180,10 @@ export const applyHead = (document, description) => {
 // The plugin a page lists to keep its document current as its state changes: `plugins: [withHead]` (import it from `@ehtb/agent-ui/head`).
 // The server writes `head` into every document it renders, and a soft navigation copies it from the document it fetched
 // (src/head-reader.js), so the plugin is only for a head that is a function of the state; the page checks say so (src/pages-checks.js).
-export const withHead = (environment) => (api) => {
-  const { win, page, basePath = '' } = environment;
-  if (!win?.document?.createElement) return; // a server renders the head itself (server/document.mjs): its window has no document to keep
-  api.watch(api.keys(), () => applyHead(win.document, resolveHead(page.head, api.state(), `page "${page.path}" head`, basePath)));
-};
+export const withHead = markPagePlugin(function withHead(environment) {
+  return (api) => {
+    const { win, page, basePath = '' } = environment;
+    if (!win?.document?.createElement) return; // a server renders the head itself (server/document.mjs): its window has no document to keep
+    api.watch(api.keys(), () => applyHead(win.document, resolveHead(page.head, api.state(), `page "${page.path}" head`, basePath)));
+  };
+});

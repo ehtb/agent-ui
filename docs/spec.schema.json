@@ -472,7 +472,7 @@
         "on": {
           "type": "object",
           "patternProperties": {
-            "^(click|dblclick|pointerdown|pointermove|pointerup|pointercancel|pointerover|pointerout|input|change|keydown|keyup|focusin|focusout|submit)(\\.[^.]+)?$": {
+            "^(?:(keydown|keyup)\\.[^.]+|(?!(?:keydown|keyup)\\.)(click|dblclick|pointerdown|pointermove|pointerup|pointercancel|pointerover|pointerout|input|change|keydown|keyup|focusin|focusout|submit))$": {
               "$ref": "#/$defs/handlers"
             }
           },
@@ -539,6 +539,18 @@
       },
       "required": [
         "when"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "children"
+          ]
+        },
+        {
+          "required": [
+            "otherwise"
+          ]
+        }
       ],
       "additionalProperties": false
     }

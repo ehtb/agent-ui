@@ -2,6 +2,39 @@
 
 The project follows [semantic versioning](https://semver.org/) from 1.0.0. Until then a minor version (0.x.0) may change the grammar, an API or a message, and the entry says how to move. What counts as the public surface is in `README.md`, "Browser Support, Stability & Maturity".
 
+## 0.4.0 - 2026-11-09
+
+### Added
+
+- **`pageOf`, and page.js checked as a module.** `@ehtb/agent-ui/pages` exports `pageOf(pageModule, file)`, which a generated entry uses to read `page.js`. A `page.js` that exports no `page` (a misspelt `pages`) fails with the file and "Did you mean `page`?", and `paths` left in `page.js` is reported as belonging in `view.js`.
+- **Plugin factories and plugins are told apart.** The package's page factories (`withResources`, `withHead`, `withFollow`, `withMoves`, `withNavigation`) are marked: one given to `app({ plugins })` fails with where it belongs instead of installing nothing. A page factory that throws (for example the plugin `follow` written in `page.js`) or returns something that is not a plugin is reported with the page, and `resources` given to a page is refused when it is installed. To move: list the `with...` factory in `page.js` and the plugin itself (`follow`, `moves`, `resources(fetchFunction)`, ...) in `app()`.
+- **`agent-ui check` starts a page with parameters and no `paths`** at a sample URL (`/item/:id` as `/item/1`), without fetching data, so a missing plugin, a resource definition, a derive that throws or a shell read is found. It also reports a `route.go` whose target is not a page of the same shell.
+- **`PORT`.** `agent-ui dev` and `agent-ui serve` use `--port`, then the `PORT` environment variable, then 8080. An empty `PORT` is unset; anything that is not a whole number from 1 to 65535 stops the command with exit code 2. To move: `--port=0` is refused (an operating-system port is a library call, `startDev({ port: 0 })`).
+- **The API module is checked at startup.** `createSsrHandler` (and `agent-ui check`) verifies that `config.api` exports `createApi` and that its result has `handle` (with `handleForm` a function when present), before answering anything, with the member to add.
+- The documentation site at https://ehtb.github.io/agent-ui/ is in the repository (not in the npm package) and is generated from these Markdown files.
+
+### Changed
+
+- **Answers with no body.** `api.handle` may leave `body` out for a 3xx redirect, 204 or 304, which are answered empty; a redirect used to become a 500. Any other status must say what it sends, `null` included.
+- **`agent-ui build` reports every failure in one line**, `build failed: …`, with exit code 1: the configuration, a page folder, a generated module, the output directory and a transform included, not only the bundler's own errors.
+- **`hosts` must be a list.** `createSsrHandler` and `createStaticHandler` refuse a string at startup; a string was compared as a substring ("localhost" accepted "host"). To move: pass `hostsFor(host)` or `['example.com']`.
+- **`renderPage` refuses an unknown option**, with "Did you mean". The advice about the server window is now added only to an error from the page, its plugins or its shell, not to a `stateForBrowser` failure. To move: pass only the documented options.
+- **The JSON Schema** allows a key chord only on `keydown` and `keyup` and requires `children` or `otherwise` on a `when`, as the validator always did. A spec the schema lets through is still checked by `validate()`.
+- **The request body** is read in the encoding the host set on the stream (a latin1 chunk is not counted as UTF-8), and string chunks are accepted.
+- **`agent-ui dev`** reports a taken port as one error naming the port and closes its watchers, instead of an unhandled error event.
+- **Head elements** are inserted before the first `</head>`, so a body script containing the literal `</head>` cannot capture them.
+- **Messages name `NaN` and `Infinity` as such**, instead of JSON's `"null"`, for a page's `status(state)` and for the handler's options.
+- **TypeScript declarations** match the runtime: page and shell plugin environments (`isServerRendering`, `serverRendered`, `basePath`), `create`/`mount`/`describePage`/`currentPage`, `LoadedConfig.entries` (no `url`), `loadConfig({ readOnly })`, `cssOverrides`/`styleSources`, `prerender({ basePath })` and `assertStaticSite`'s result, `withNavigation` and `browserEnvironment` (`basePath`), `validate`'s optional context, and `app({ specChecked })`.
+- **Every plugin is optional, and the docs say so** in each place a plugin is listed; `agent-ui explain plugins` says it in its first line.
+
+### Fixed
+
+- **A production page that imports its own `view.js` is warned about again**: the leak check turns itself off only for a development entry, and it names a module reached through `import()`.
+- **Small chunks** that grew past `minSharedChunkBytes` by taking another in are no longer folded again, and a chunk folded more than once keeps every name in its reason.
+- **Hot reload** versions an import whose chunk file name contains `~`.
+- **The server DOM** matches `[attr="value"]`, refuses a selector it cannot match instead of silently returning nothing, and leaves a detached `replaceWith` alone; the test shim's events support `stopPropagation` and `preventDefault`.
+- **A thrown string** from a page plugin or a page start is reported as what was thrown, not "threw undefined".
+
 ## 0.3.0 - 2026-11-08
 
 ### Added

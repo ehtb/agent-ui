@@ -1,7 +1,7 @@
 // Server-side rendering: same runtime, server DOM, HTML out, state transfer in.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createWindow, createRoot, findElements } from './support/dom-shim.mjs';
+import { createWindow, createRoot, findElements, fireEvent } from './support/dom-shim.mjs';
 import { createFakeFetch, sleep } from './support/helpers.mjs';
 
 const { renderPage, createServerWindow, stateScriptHtml } = await import('../server/render-page.js');
@@ -14,6 +14,37 @@ const itemsFetch = () => createFakeFetch((url) => (url === '/items.json' ? items
 
 // The fixture's pages: the page that serves the URL is rendered for it.
 const renderCatalog = (url, options = {}) => renderPage(catalog.pageFor(url).create, { dev: false, url, fetchFunction: itemsFetch(), ...options });
+
+test('the server DOM matches an attribute by value too, refuses a selector it cannot match, and leaves a detached node alone', () => {
+  const document = createServerDocument();
+  const root = document.createElement('div');
+  const save = document.createElement('button');
+  save.setAttribute('data-id', 'save');
+  const cancel = document.createElement('button');
+  cancel.setAttribute('data-id', 'cancel');
+  root.append(save, cancel);
+  assert.deepEqual(root.querySelectorAll('[data-id="save"]'), [save]);
+  assert.equal(save.closest('[data-id="save"]'), save);
+  assert.equal(save.closest('[data-id="cancel"]'), null);
+  assert.throws(() => root.querySelectorAll('button'), /querySelectorAll\("button"\): this DOM matches attribute selectors only, "\[name\]" and '\[name="value"\]'/);
+  const detached = document.createElement('p');
+  assert.doesNotThrow(() => detached.replaceWith(document.createElement('p')), 'a detached node is left alone, as Element.replaceWith does');
+});
+
+test('the test shim stops an event where a handler says stopPropagation, as a browser does', () => {
+  const document = createServerDocument();
+  const outer = document.createElement('div');
+  const inner = document.createElement('button');
+  outer.append(inner);
+  const seen = [];
+  outer.addEventListener('click', () => seen.push('outer'));
+  inner.addEventListener('click', (event) => {
+    seen.push('inner');
+    event.stopPropagation();
+  });
+  fireEvent(inner, 'click');
+  assert.deepEqual(seen, ['inner']);
+});
 
 test('server DOM serializes elements, escaping, void tags, boolean and value properties', () => {
   const document = createServerDocument();
@@ -288,6 +319,10 @@ test('createServerWindow exposes location parts for plugins', () => {
   assert.deepEqual([win.location.pathname, win.location.search, win.location.hash], ['/item/3', '?tab=a', '#top']);
 });
 
+test('renderPage refuses an option it does not know, with a suggestion', async () => {
+  await assert.rejects(renderPage(() => assert.fail('never created'), { dev: false, fetchFuncton: () => {} }), /renderPage: unknown option "fetchFuncton"\. Did you mean "fetchFunction"\? Allowed options: url, fetchFunction, timeoutMs, dev, initialState, createShell, request, stateForBrowser, signal, basePath/);
+});
+
 test('the server window can add and remove listeners, and the environment of a render says isServerRendering', async () => {
   const win = createServerWindow('/');
   for (const target of [win, win.document]) {
@@ -296,7 +331,7 @@ test('the server window can add and remove listeners, and the environment of a r
     target.removeEventListener('pagehide', listener);
   }
   let seen = null;
-  const spy = () => () => {};
+  const spy = () => {}; // an app plugin installs its effects in its own body; returning a function is refused (it would be a page factory)
   await renderPage((environment) => {
     seen = environment.isServerRendering;
     return app({ dev: true, namespaces: { n: { state: { a: 1 } } }, root: environment.root, spec: { tag: 'p', id: 'p', children: 'hi' }, plugins: [spy] });

@@ -30,6 +30,17 @@ const page = "export const page = { head: { title: 'Home' } };";
 const view = "export const view = { tag: 'p', id: 'home', children: 'home' };";
 const build = (project) => loadConfig({ root: project, mode: { dev: false } });
 
+test('every generated entry imports page.js as pageModule and reads it with pageOf, in development and production alike', async () => {
+  await withProject({ 'page.js': page, 'view.js': view }, async (project) => {
+    for (const dev of [true, false]) {
+      await loadConfig({ root: project, mode: { dev } });
+      const main = readFileSync(join(project, '.agent-ui/index/main.js'), 'utf8');
+      assert.match(main, /import \* as pageModule from '\.\.\/\.\.\/pages\/page\.js';/, `${dev ? 'development' : 'production'} entry`);
+      assert.match(main, /startPage\(pageOf\(pageModule, 'pages\/page\.js'\), /, `${dev ? 'development' : 'production'} entry`);
+    }
+  });
+});
+
 test('a page folder without a view.js is refused with the file to create', async () => {
   await withProject({ 'page.js': page }, (project) => {
     assert.throws(() => discoverPages(project), /pages\/page\.js: there is no view\.js next to it\. Create pages\/view\.js and export the page's content: `export const view = section\(\{ \.\.\. \}\)`/);

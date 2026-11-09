@@ -31,12 +31,26 @@ Object.defineProperty(shimDocument, 'activeElement', { get: () => ShimElement.fo
 globalThis.document = shimDocument;
 globalThis.window = {};
 
-// Fires an event that bubbles from `element` up through its ancestors, like input/change/keydown/click/focusout.
+// Fires an event that bubbles from `element` up through its ancestors, like input/change/keydown/click/focusout. The event has
+// the two methods a real one has, so a handler that says `{ stopPropagation: true }` stops here as it would in a browser.
 export const fireEvent = (element, type, properties = {}) => {
+  let stopped = false;
+  let defaultPrevented = false;
   const event = { type, target: element, ...properties };
-  for (let node = element; node; node = node.parentElement) {
-    for (const listener of node.listeners[type] || []) listener(event);
+  event.preventDefault ??= () => {
+    defaultPrevented = true;
+  };
+  event.stopPropagation ??= () => {
+    stopped = true;
+  };
+  Object.defineProperty(event, 'defaultPrevented', { get: () => defaultPrevented });
+  for (let node = element; node && !stopped; node = node.parentElement) {
+    for (const listener of node.listeners[type] || []) {
+      listener(event);
+      if (stopped) break;
+    }
   }
+  return event;
 };
 
 export const findElements = (root, predicate, found = []) => {

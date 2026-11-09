@@ -5,8 +5,8 @@ A build turns the folders below `pages/` into a site in `dist/` that any static 
 ```
 agent-ui build        production: hashed file names, comments and indentation stripped, spec validator left out
 agent-ui build --dev  development: stable names, readable output, validator included
-agent-ui dev          development server with hot reload at http://127.0.0.1:8080
-agent-ui serve        the built site, rendered per request, at http://127.0.0.1:8080 (development and test only)
+agent-ui dev          development server with hot reload at http://127.0.0.1:8080 (port: --port, then PORT, then 8080)
+agent-ui serve        the built site, rendered per request, at http://127.0.0.1:8080 (development and test only; same port rule)
 ```
 
 The command treats the current directory as the project root, reads `build.config.mjs` there and looks for the pages in `pages/`. `--config=<file>` names another file. Every example in this repository has its own `build.config.mjs` to copy from.
@@ -25,7 +25,7 @@ The package is split so that each part can be imported, bundled and dropped on i
 |---|---|---|
 | `agent-ui` | the runtime | the validator and three small shared modules (`src/spec-core.js`, `src/messages.js`, `src/namespaces.js`) |
 | `@ehtb/agent-ui/shell`, `/navigation` | a shell's definition and the soft navigation plugin | `shell` reaches the runtime and `syncApps`; `navigation` reaches the pages module: only pages that list a shell download them |
-| `@ehtb/agent-ui/pages` | `definePage` and `startPage`, what every page runs | the runtime, hydration, the URL patterns and the server-only and development halves that production builds replace by stubs; the debug panel only through a dynamic `import()` |
+| `@ehtb/agent-ui/pages` | `definePage`, `startPage` and `pageOf`, what every page and generated entry runs | the runtime, hydration, the URL patterns and the server-only and development halves that production builds replace by stubs; the debug panel only through a dynamic `import()` |
 | `@ehtb/agent-ui/resources`, `/url-pattern` | a plugin and the URL pattern matcher | nothing from the runtime (`resources` reaches only `src/messages.js`) |
 | `@ehtb/agent-ui/window-events`, `/components`, `/spec-tools`, `/memoize` | plugins and tools | the shared modules, plus the validator for `spec-tools` |
 | `@ehtb/agent-ui/spec` | spec builders | the shared modules; in development also the call-site checks (`src/spec-checks.js`) and the validator's grammar, in production a stub replaces the checks |
@@ -212,16 +212,16 @@ The pages are not in this table because nothing configures them: the folders bel
 | Command | Options |
 |---|---|
 | `agent-ui build` | `--config=<file>`, `--dev`, `--validator=include\|omit`, `--out=<directory>`, `--source-maps`, `--static` (also write every page as a file; see "Static site") |
-| `agent-ui dev` | `--config=<file>`, `--port=<number>`, `--host=<address>` |
-| `agent-ui serve` | `--config=<file>`, `--out=<directory>`, `--port=<number>`, `--host=<address>` |
+| `agent-ui dev` | `--config=<file>`, `--port=<number>`, `--host=<address>`; the environment variable `PORT` |
+| `agent-ui serve` | `--config=<file>`, `--out=<directory>`, `--port=<number>`, `--host=<address>`; the environment variable `PORT` |
 | `agent-ui check` | `--config=<file>` |
 | `agent-ui schema [outputFile]` | none |
 | `agent-ui explain [name]` | none; one optional name of a recipe or topic |
 | `agent-ui init` | none |
 
-`serve` and `dev` listen on `127.0.0.1` (this machine) unless `--host` says otherwise: `--host=0.0.0.0` is the explicit choice to serve the network. A server on this machine answers only to its own names (`localhost`, `127.0.0.1`, `[::1]`) in the Host header and refuses any other with 421, so a web page cannot read the project through a rebound DNS name (`hosts` option of `createStaticHandler` and `createSsrHandler`; `null`, the default, answers to any). A 500 tells the visitor `internal server error` and nothing else; the error goes to the server's `onError` (default `console.error`), and every answer carries `x-content-type-options: nosniff`.
+The port is `--port`, then the `PORT` environment variable, then 8080; an empty `PORT` counts as unset, and a value that is not a port (1 to 65535) stops the command with exit code 2 instead of listening on the default. `serve` and `dev` listen on `127.0.0.1` (this machine) unless `--host` says otherwise: `--host=0.0.0.0` is the explicit choice to serve the network. A server on this machine answers only to its own names (`localhost`, `127.0.0.1`, `[::1]`) in the Host header and refuses any other with 421, so a web page cannot read the project through a rebound DNS name (`hosts` option of `createStaticHandler` and `createSsrHandler`; `null`, the default, answers to any). A 500 tells the visitor `internal server error` and nothing else; the error goes to the server's `onError` (default `console.error`), and every answer carries `x-content-type-options: nosniff`.
 
-A misspelt or unknown option, a missing value, a port that is not a number, or a value outside the choices stops the command with exit code 2 and one line that names the option and the fix.
+A misspelt or unknown option, a missing value, a port that is not a whole number from 1 to 65535, or a value outside the choices stops the command with exit code 2 and one line that names the option and the fix.
 
 ## Production vs development builds
 
@@ -318,15 +318,15 @@ This is a demo server. It has no compression, no streaming, no file-upload or `m
 
 **Static files.** Anything in `public/` is copied as it is, so `public/terms.html` is served at `/terms.html`. A link to such a file is not a page, and `agent-ui check` accepts it because the file exists.
 
-**APIs and form posts.** The config key `api` names a Node module exporting `createApi({ root })`. The object it returns has the members below. This is the plug-in point for a server side: any object with these members works. `examples/events/compose-api.js` builds one from per-page endpoint tables; `examples/shop/api.js` is a plain object; `examples/with-express` and `examples/with-fastify` leave the API to their host server.
+**APIs and form posts.** The config key `api` names a Node module exporting `createApi({ root })`. The object it returns has the members below; `handle` is required. A module that exports no `createApi`, and a result without `handle`, are refused when `agent-ui serve` or `agent-ui check` starts, with the member to add. This is the plug-in point for a server side: any object with these members works. `examples/events/compose-api.js` builds one from per-page endpoint tables; `examples/shop/api.js` is a plain object; `examples/with-express` and `examples/with-fastify` leave the API to their host server.
 
 - `apiBase`, optional: the path below which `handle` answers GET requests (default `'/api'`). Any POST goes to `handle`, then to `handleForm`.
-- `handle({ method, pathname, search, query, headers, cookies, signal, body })` for JSON endpoints. It returns `{ status, body, headers? }` or `{ status, body, headers?, raw: true }` for bytes it produced itself, or null. An API answer is `cache-control: no-store` unless it sets one, and it may set a cookie. With `composeApi`, a path that exists for other methods answers 405 with an `allow` header.
+- `handle({ method, pathname, search, query, headers, cookies, signal, body })` for JSON endpoints. It returns `{ status, body, headers? }` or `{ status, body, headers?, raw: true }` for bytes it produced itself, or null. A status that carries no body (a 3xx redirect, 204 or 304) may leave `body` out and is answered empty; any other status must say what it sends. An API answer is `cache-control: no-store` unless it sets one, and it may set a cookie. With `composeApi`, a path that exists for other methods answers 405 with an `allow` header.
 - `handleForm({ method, pathname, search, query, headers, cookies, form })`, optional. It turns a plain HTML form post into `{ status, url, initialState?, headers? }` or `{ redirect, headers? }`. The first renders the page at `url` (a local path starting with `/`, not `//`, with no backslash or encoded separator at the start) with that state, so forms work without JavaScript. The second answers 303 with `location` and `cache-control: no-store` (post/redirect/get), so a reload does not post again; the redirect follows the same path rule, and its `headers` cannot set `location` or `cache-control`. A form response is `no-store` unless `transformResponse` replaces the cache policy. A POST to a path that is a page but that neither `handle` nor `handleForm` answers is a 404.
 
 The API and the form handler receive the same request context as the page, and their headers follow the rules above. While a form outcome page is rendered, `initialStateFor`, `stateForBrowser`, `transformResponse`, its resources and `fetchFunction` see the outcome page's `pathname`, `search` and `query`; the method, headers and cookies remain those of the POST. A session token belongs in an `HttpOnly` cookie that one of them sets; the page only reads public state from `initialStateFor`. See API.md section 12 for the context, the header checks and the session hooks.
 
-Request bodies are JSON or urlencoded, with a 100 KB limit. A body with no content type or another type (including `multipart/form-data`), or a compressed one (`content-encoding`), is answered 415, a body over the limit 413, and a malformed body 400; an empty body is `{}`. A host framework that parsed the body may pass it as `request.body`. An endpoint may answer `{ status, body, headers?, raw: true }` to send bytes it produced itself (CSV, XML, a file); a raw answer must set its own `content-type` unless the body is empty. `transformResponse` runs for raw answers too (so site-wide headers still apply); it may rewrite a string body, but a binary body is sent unchanged and returning a body for it is refused. This is a demo server, and in-memory state is fine for a demo; it is not a production back end. A static host has no API: the generated pages still work, but a form needs JavaScript and a server to receive it.
+Request bodies are JSON or urlencoded, with a 100 KB limit. A body with no content type or another type (including `multipart/form-data`), or a compressed one (`content-encoding`), is answered 415, a body over the limit 413, and a malformed body 400; an empty body is `{}`. A host framework that parsed the body may pass it as `request.body`. An endpoint may answer `{ status, body, headers?, raw: true }` to send bytes it produced itself (CSV, XML, a file); a raw answer must set its own `content-type` unless the body is empty, and like a JSON answer it may leave `body` out for a 3xx, 204 or 304. `transformResponse` runs for raw answers too (so site-wide headers still apply); it may rewrite a string body, but a binary body is sent unchanged and returning a body for it is refused. This is a demo server, and in-memory state is fine for a demo; it is not a production back end. A static host has no API: the generated pages still work, but a form needs JavaScript and a server to receive it.
 
 ## Data while rendering
 
@@ -350,7 +350,7 @@ export default () => ({
 
 **A static site** is `agent-ui build --static`: after the build every page is rendered with `server/render-page.js` from the page's generated module (the same `create(env)` the browser entry uses) and written to `<path>/index.html` (the page `/` to `index.html`), with its markup inside `<div id="app">`, followed by the state script, before the module script. A plain file host then serves finished pages with no server. It is for a site that names every page.
 
-- A page whose path has parameters (`/event/:id`, `/docs/*path`) is written once for every URL its `view.js` lists in `paths`: `export const paths = ['/event/1', '/event/2']`, or an async function that returns them (view.js runs only in Node, so it may read files or a database). Each URL must be a URL of the page, plain (letters, digits and `. _ ~ -` in its segments), and listed once. A page with parameters that lists none stops the build before it renders anything, naming the pages and the fix. `agent-ui check` renders the same URLs, so what is checked is what is written.
+- A page whose path has parameters (`/event/:id`, `/docs/*path`) is written once for every URL its `view.js` lists in `paths`: `export const paths = ['/event/1', '/event/2']`, or an async function that returns them (view.js runs only in Node, so it may read files or a database). Each URL must be a URL of the page, plain (letters, digits and `. _ ~ -` in its segments), and listed once. A page with parameters that lists none stops the build before it renders anything, naming the pages and the fix. `agent-ui check` renders the same URLs, so what is checked is what is written; for a page that lists none it starts the page at a sample URL (`/event/1`) without fetching data, and lists it as a note.
 - Data requests are answered by the `fetchFunction` of the config (see "Data while rendering"). Without one, the first request fails with the fix.
 - The page's `ready` says when its data is there. A page that never becomes ready fails the build instead of shipping a loading state.
 - A page whose data comes from a server that is not running during the build is not a page for a static site: build without `--static`.

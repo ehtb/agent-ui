@@ -71,11 +71,20 @@ const findPageFolders = (directory, prefix = '') =>
 export const discoverPages = (projectRoot, directory = PAGES_DIRECTORY) => {
   const pagesDirectory = resolve(projectRoot, directory);
   if (!existsSync(pagesDirectory)) fail(directory, 'there is no pages directory', `Create ${directory}/page.js and ${directory}/view.js (the page at "/") and a folder with both files for every other URL, for example ${directory}/about/page.js and ${directory}/about/view.js`);
+  // Each URL pattern is compiled once, and a pattern that cannot work names the page.js it came from.
+  const compiled = (pattern, file) => {
+    try {
+      return compileUrlPattern(pattern);
+    } catch (error) {
+      fail(file, `its URL ${JSON.stringify(pattern)} is not allowed (${error.message})`, 'Rename the folder: letters, digits and . _ ~ - are fixed segments, [name] is a parameter segment and [...name] is the rest of the path, last');
+    }
+  };
+  const matchers = new Map(); // page path -> its compiled matcher, so each pattern is compiled once
   const found = findPageFolders(pagesDirectory).map((folder) => {
     const shown = `${directory}/${folder ? `${folder}/` : ''}page.js`;
     const base = `${directory}/${folder ? `${folder}/` : ''}`;
     const path = patternOfFolder(folder, shown);
-    compileUrlPattern(path);
+    matchers.set(path, compiled(path, shown));
     if (!existsSync(join(pagesDirectory, folder, 'view.js'))) fail(shown, 'there is no view.js next to it', `Create ${base}view.js and export the page's content: \`export const view = section({ ... })\``);
     return { name: nameOfPattern(path), path, folder, file: shown, viewFile: `${base}view.js`, stylesheet: existsSync(join(pagesDirectory, folder, 'page.css')) ? `${base}page.css` : null };
   });
@@ -83,24 +92,26 @@ export const discoverPages = (projectRoot, directory = PAGES_DIRECTORY) => {
   const shapes = new Map();
   const names = new Map();
   for (const page of found) {
-    const shape = compileUrlPattern(page.path).shape;
+    const shape = matchers.get(page.path).shape;
     if (shapes.has(shape)) fail(page.file, `its URL "${page.path}" matches the same URLs as "${shapes.get(shape).path}" (${shapes.get(shape).file})`, 'Two pages cannot have the same URL pattern; rename a parameter folder to the same name and merge the pages, or give one of them a fixed segment');
     shapes.set(shape, page);
     if (names.has(page.name)) fail(page.file, `its generated name "${page.name}" is also the name of ${names.get(page.name).file}`, 'Rename a folder so that the URLs differ by more than "/" against "-"');
     names.set(page.name, page);
   }
-  return sortBySpecificity(found, (page) => compileUrlPattern(page.path));
+  return sortBySpecificity(found, (page) => matchers.get(page.path));
 };
 
 // The text of a browser entry: the page's style module (and global styles), the page itself, and the call that registers
-// (and, first in the document, starts) it.
+// (and, first in the document, starts) it. The page is imported as the module namespace `pageModule` and read with `pageOf`, so
+// that a misspelt export of page.js is reported with the file; the call the callers pass in must read `pageOf(pageModule, ...)`,
+// and a test in test/pages-build.test.mjs checks both (the import alone does not keep them together).
 const entryText = (page, imports, call, { globalStylesheet, pageStyle, toProject }) =>
   [
     `// Generated for ${page.file}: the browser entry of the page at "${page.path}". Do not edit; it is rewritten on every build.`,
     ...(globalStylesheet ? [`import '../global.js';`] : []),
     ...(pageStyle ? [`import '${toProject(pageStyle)}';`] : []),
     ...imports,
-    `import { page } from '${toProject(page.file)}';`,
+    `import * as pageModule from '${toProject(page.file)}';`,
     '',
     call,
     '',
@@ -165,7 +176,7 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
   if (globalStylesheet) writeGenerated(globalModule, `// Generated: the styles of every page (${globalStylesheet}). Do not edit.\nimport '${importPath(globalModule, wrapperOf.get(globalStylesheet))}';\n`);
   // The entry's last argument: the URL of the entry's own file, which a soft navigation finds in the HTML of the next page.
   // A site below a base path (src/base-path.js) writes it down here, as it writes `dev`: the browser cannot tell it from the address.
-  const startCall = (page, content) => `startPage(page, { path: '${page.path}', ${content}, url: import.meta.url, dev: ${dev}${basePath ? `, basePath: '${basePath}'` : ''} });`;
+  const startCall = (page, content) => `startPage(pageOf(pageModule, '${page.file}'), { path: '${page.path}', ${content}, url: import.meta.url, dev: ${dev}${basePath ? `, basePath: '${basePath}'` : ''} });`;
   for (const page of pages) {
     const folder = join(generated, page.name);
     mkdirSync(folder, { recursive: true });
@@ -176,18 +187,18 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
     if (dev) {
       writeGenerated(
         join(folder, 'main.js'),
-        entryText(page, [`import * as view from '${toProject(page.viewFile)}';`, `import { contentOf, startPage } from '${packageName}/pages';`], startCall(page, `...contentOf(view, '${page.viewFile}')`), { globalStylesheet, pageStyle, toProject }),
+        entryText(page, [`import * as view from '${toProject(page.viewFile)}';`, `import { contentOf, pageOf, startPage } from '${packageName}/pages';`], startCall(page, `...contentOf(view, '${page.viewFile}')`), { globalStylesheet, pageStyle, toProject }),
       );
     }
     writeGenerated(
       join(folder, 'app.js'),
       [
         `// Generated for ${page.file}: what the server and \`agent-ui check\` import. Do not edit; it is rewritten on every build.`,
-        `import { contentOf, definePage } from '${packageName}/pages';`,
-        `import { page } from '${toProject(page.file)}?t=${stamp}';`,
+        `import { contentOf, definePage, pageOf } from '${packageName}/pages';`,
+        `import * as pageModule from '${toProject(page.file)}?t=${stamp}';`,
         `import * as view from '${toProject(page.viewFile)}?t=${stamp}';`,
         '',
-        `const definition = definePage(page, { path: '${page.path}', ...contentOf(view, '${page.viewFile}') });`,
+        `const definition = definePage(pageOf(pageModule, '${page.file}'), { path: '${page.path}', ...contentOf(view, '${page.viewFile}') });`,
         'export const { create, createShell, describePage, namespaces, shellContent, shellName, shellNamespaces, spec } = definition;',
         '// The URLs check and a static build render a page with parameters at (build/page-paths.mjs); undefined when view.js lists none.',
         'export const paths = view.paths;',
@@ -240,7 +251,7 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
         join(generated, page.name, 'main.js'),
         entryText(
           page,
-          [`import { spec } from './spec.js';`, ...(module.shellContent ? [`import { shell } from '${shellFile}';`] : []), `import { startPage } from '${packageName}/pages';`],
+          [`import { spec } from './spec.js';`, ...(module.shellContent ? [`import { shell } from '${shellFile}';`] : []), `import { pageOf, startPage } from '${packageName}/pages';`],
           startCall(page, `spec${module.shellContent ? ', shell' : ''}`),
           { globalStylesheet, pageStyle, toProject },
         ),

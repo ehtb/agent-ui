@@ -1,6 +1,7 @@
 /**
  * The framework's own build settings: the runtime chunk, validator handling, `minify` and `hash`.
- * Spread it into your build config: `{ ...frameworkBuildOptions({ dev, validator, projectRoot }), entries: ... }`.
+ * Spread it into your build config: `{ ...frameworkBuildOptions({ dev, validator, projectRoot }), api: 'api.js' }` (which pages exist is not
+ * configured: it follows from the folders below pages/; `entries` is not a build option).
  * Production leaves the spec validator out (`validator: 'omit'`); development includes it.
  */
 export function frameworkBuildOptions(options?: {

@@ -25,7 +25,7 @@
 //               the whole content of the page, so give its elements ids of their own
 //   layout      (content) => spec: the shell around the content, imported from a shared module (or none). The layout and
 //               the view are built on the server and the build ships the result as data
-//   namespaces  { name: { state, derive, actions, resources, shapes } }: everything the page keeps in state, exactly as in
+//   namespaces  { name: { state, derive, actions, resources, shapes, rowState } }: everything the page keeps in state, exactly as in
 //               app(). Shared namespaces are imported and listed here like any other. "route" is reserved: the framework
 //               provides route.params, the parameters of the URL (/product/3 -> route.params.id === '3'), and route.hydrated,
 //               false in the markup the server renders and true once the browser app has taken over
@@ -49,21 +49,26 @@
 import { app } from './ui.js';
 import { browserEnvironment } from './hydrate.js';
 import { codedError } from './errors.js';
+import { fail, problem } from './messages.js';
 import { RESERVED_NAMESPACE, declaredStateKeys, mergeInitialState } from './namespaces.js';
 import { withoutBase } from './base-path.js';
-import { compileUrlPattern } from './url-pattern.js';
-import { checkPage, checkViewExports } from './pages-checks.js';
+import { compileUrlPattern, withoutTrailingSlash } from './url-pattern.js';
+import { checkPage, checkPageExports, checkViewExports } from './pages-checks.js';
 import { exposeHot } from './hot.js';
 import { createDocumentDescriber, createStatusReader } from './pages-server.js';
-
-// A visitor may type a trailing slash: "/product/3/" is the page "/product/:id".
-const pathWithoutTrailingSlash = (pathname) => (pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname);
 
 // The parts of a view.js module that definePage takes (`import * as viewModule from './view.js'`), checked first: a misspelt
 // export is reported with the file and the nearest valid name instead of being ignored. The generated modules call this.
 export const contentOf = (viewModule, file) => {
   checkViewExports(viewModule, file);
   return { view: viewModule.view, layout: viewModule.layout, pending: viewModule.pending, shell: viewModule.shell };
+};
+
+// The `page` of a page.js module (`import * as pageModule from './page.js'`), checked first like contentOf: a misspelt export is
+// reported with the file and the fix instead of reaching definePage as undefined.
+export const pageOf = (pageModule, file) => {
+  checkPageExports(pageModule, file);
+  return pageModule.page;
 };
 
 export const definePage = (page, { path, view, layout, pending, spec, shell: shellContent }) => {
@@ -128,13 +133,34 @@ export const definePage = (page, { path, view, layout, pending, spec, shell: she
   // The shell's content, finished: { name, view }. The server builds it from view.js, the browser receives it as data.
   const createShell = page.shell ? (environment) => page.shell.createApp(environment, shellContent.view) : undefined;
 
+  // A page plugin is a factory, (environment) => plugin. Called with the wrong thing (an app plugin is (api) => void) it either
+  // throws a TypeError about the api or returns something that is not a plugin; both are reported with the file's fix.
+  const PLUGIN_FIX = 'A page lists plugin factories, (environment) => plugin, for example plugins: [withResources]; the plugin itself (follow, moves, resources(fetchFunction)) belongs in app({ plugins })';
+  const pluginName = (plugin) => (typeof plugin?.name === 'string' && plugin.name ? ` ("${plugin.name}")` : '');
+  const installPagePlugin = (plugin, index, environment) => {
+    if (typeof plugin !== 'function') fail(`page "${path}"`, `plugins[${index}] is ${typeof plugin}, not a function`, PLUGIN_FIX);
+    let installed;
+    try {
+      installed = plugin({ ...environment, page: { path, head: page.head } });
+    } catch (error) {
+      // A plugin may throw anything, a string included: the message must name what was thrown, not "undefined".
+      const wrapped = new Error(problem(`page "${path}"`, `plugins[${index}]${pluginName(plugin)} threw ${error?.message ?? String(error)}`, PLUGIN_FIX));
+      wrapped.cause = error;
+      throw wrapped;
+    }
+    if (typeof installed !== 'function') {
+      fail(`page "${path}"`, `plugins[${index}]${pluginName(plugin)} returned ${installed === undefined ? 'nothing' : typeof installed}, not a plugin`, PLUGIN_FIX);
+    }
+    return installed;
+  };
+
   // The same function the browser entry and the server renderer call. `environment.shell` is the app of the page's shell, when it
   // has one: what the shell reads from this page (page.shell.reads) and where route.go leads start here and end when this app is destroyed.
   let specChecked = false;
   const create = (environment) => {
     const { root, win, dev, initialState = {}, shell: shellApp, basePath = '' } = environment;
     const pathname = win?.location?.pathname === undefined ? path : withoutBase(basePath, win.location.pathname) ?? path;
-    const params = pattern.match(pathWithoutTrailingSlash(pathname)) ?? {};
+    const params = pattern.match(withoutTrailingSlash(pathname)) ?? {};
     const ui = app({
       namespaces,
       initialState: mergeInitialState(initialState, { [RESERVED_NAMESPACE]: { params } }),
@@ -143,7 +169,7 @@ export const definePage = (page, { path, view, layout, pending, spec, shell: she
       dev,
       basePath,
       debug: environment.debug ?? page.debug, // the server says false; a browser says nothing, and the page decides
-      plugins: [...pagePlugins.map((plugin) => plugin({ ...environment, page: { path, head: page.head } })), keepTitleCurrent(win)],
+      plugins: [...pagePlugins.map((plugin, index) => installPagePlugin(plugin, index, environment)), keepTitleCurrent(win)],
       // The spec and namespaces of a page never change, so production checks them once. A caller's initial state is checked every time.
       specChecked: specChecked && !dev && Object.keys(initialState).length === 0,
     });

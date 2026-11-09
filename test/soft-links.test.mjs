@@ -153,6 +153,21 @@ test('check reads the links of the shell\'s content and the targets of route.go,
   }
 });
 
+test('check: route.go is a soft navigation, so it must lead to a page of the same shell too', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'agent-ui-soft-'));
+  try {
+    writeShellPage(root, 'home.mjs', { path: '/', links: [goTo('/about'), goTo('/plain')] });
+    writeShellPage(root, 'about.mjs', { path: '/about', links: [] });
+    writeShellPage(root, 'plain.mjs', { path: '/plain', links: [], shell: false });
+    const pages = [record('index', 'home.mjs', '/'), record('about', 'about.mjs', '/about'), record('plain', 'plain.mjs', '/plain')];
+    const { problems } = await checkProject({ root, config: { outDir: 'dist', pages } });
+    assert.equal(problems.length, 1, JSON.stringify(problems));
+    assert.match(problems[0], /pages\/index\/page\.js: route\.go goes to "\/plain", which has no shell, and this page has the shell "main"\. route\.go replaces the page inside the shell that stays: send it to a page of the same shell, or use a link so the whole document changes/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------------------------------------------------------- the build
 
 const repository = resolve(import.meta.dirname, '..');
@@ -187,7 +202,7 @@ test('a production build writes the shell\'s content once, and every entry regis
       for (const name of ['index', 'about']) {
         const entry = readFileSync(join(project, `.agent-ui/${name}/main.js`), 'utf8');
         assert.match(entry, /import \{ shell \} from '\.\.\/shells\/main\.js';/);
-        assert.match(entry, /startPage\(page, \{ path: '\/(about)?', spec, shell, url: import\.meta\.url, dev: false \}\);/);
+        assert.match(entry, /startPage\(pageOf\(pageModule, 'pages\/(?:about\/)?page\.js'\), \{ path: '\/(about)?', spec, shell, url: import\.meta\.url, dev: false \}\);/);
         assert.equal(readFileSync(join(project, `.agent-ui/${name}/spec.js`), 'utf8').includes('"Same"'), false, 'the shell is not repeated in the page\'s spec');
       }
     },
@@ -198,7 +213,7 @@ test('a development entry builds the shell\'s content in the browser from view.j
   await withProject({ 'shared/shell.js': shellBehavior, 'shared/shell-view.js': shellView('Same'), 'pages/page.js': pageWith(), 'pages/view.js': viewWith() }, async (project) => {
     await loadConfig({ root: project, mode: { dev: true } });
     const entry = readFileSync(join(project, '.agent-ui/index/main.js'), 'utf8');
-    assert.match(entry, /startPage\(page, \{ path: '\/', \.\.\.contentOf\(view, 'pages\/view\.js'\), url: import\.meta\.url, dev: true \}\);/);
+    assert.match(entry, /startPage\(pageOf\(pageModule, 'pages\/page\.js'\), \{ path: '\/', \.\.\.contentOf\(view, 'pages\/view\.js'\), url: import\.meta\.url, dev: true \}\);/);
     assert.equal(readFileSync(join(project, '.agent-ui/index/app.js'), 'utf8').includes('createShell'), true);
   });
 });

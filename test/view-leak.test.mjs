@@ -24,3 +24,14 @@ test('a browser entry that reaches the builders gets a warning naming the import
 test('an entry without the builders gets no warning', () => {
   assert.deepEqual(buildEntry('clean.js').warnings, []);
 });
+
+test('a production page that imports its own view.js is still warned about: only a development entry imports view.js on purpose', () => {
+  const manifest = buildEntry('page-imports-view.js');
+  assert.equal(manifest.warnings.length, 1, JSON.stringify(manifest.warnings));
+  assert.match(manifest.warnings[0], /src\/spec\.js is in a browser bundle \(test\/fixtures\/view-leak\/page-imports-view\.js -> test\/fixtures\/view-leak\/view-in-entry\.js -> src\/spec\.js\)/);
+});
+
+test('a module reached through import() is named in the chain too: the browser downloads it as well', () => {
+  const manifest = buildEntry('dynamic-entry.js');
+  assert.match(manifest.warnings[0], /src\/spec\.js is in a browser bundle \(test\/fixtures\/view-leak\/dynamic-entry\.js -> test\/fixtures\/view-leak\/helper\.js -> src\/spec\.js\)/);
+});

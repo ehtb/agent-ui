@@ -1,14 +1,13 @@
 // The writer half of the markup a page's document carries: the state script, the entry script and the stylesheet links. The
 // build and the server write them (build/write-site.mjs, server/render-page.js, server/document.mjs); the browser's reader is
 // src/document-markup-reader.js, so a browser bundle never carries this module.
-import { escapeAttribute } from './html-escape.js';
+import { escapeAttribute, escapeJsonForScript } from './html-escape.js';
 import { STATE_ELEMENT_ID } from './hydrate.js';
 
 // JSON that is safe inside <script type="application/json">: "<" and the two line separators are escaped. The reader accepts
 // attributes in any order, so a server transform can add a nonce for a Content-Security-Policy.
 export const stateScriptHtml = (state, elementId = STATE_ELEMENT_ID) => {
-  const json = JSON.stringify(state).replace(/</g, '\\u003c').replace(/[\u2028\u2029]/g, (character) => `\\u${character.charCodeAt(0).toString(16)}`);
-  return `<script type="application/json" id="${escapeAttribute(elementId)}">${json}</script>`;
+  return `<script type="application/json" id="${escapeAttribute(elementId)}">${escapeJsonForScript(JSON.stringify(state))}</script>`;
 };
 
 // ---- the script that starts the page, and the page's stylesheets -----------------------------------------------------------------------

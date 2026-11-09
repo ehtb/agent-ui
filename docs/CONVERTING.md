@@ -62,7 +62,7 @@ Read the original and list every item below that it uses. Each one has a fixed a
 | `@radix-ui` Label | `label` with `for` | Native. |
 | `@radix-ui` Checkbox | `input` with `type: 'checkbox'` and `data-state` | Native. Record the divergence (section 6). |
 | Dialog, Popover, Select, Tooltip, Dropdown, Tabs, Accordion | native `dialog`, `details`/`summary`, `select`, or a feature with explicit open state | The behaviour behind them (open state, the active option, the displayed month, the row being moved) becomes a namespace, and the component binds to it. What is still **not** reproduced: a portal (content renders in place and CSS positions it), true focus trapping (a focus index plus the `focus` prop stands in), and library positioning. Say so in the header and in DESIGN.md. Do not fake it. The popover, combobox, date picker and drag list in `examples/react-converted-components` are worked examples. |
-| icons (`lucide-react`) | text, or a `children` node | There is no icon library. |
+| icons (`lucide-react`) | SVG tags (`svg`, `path`, `circle`, ...; recipe `svg-icons`), text, a `children` node, or an `img` | There is no icon library. |
 | animation classes | `transition` plus CSS | |
 
 When an item has no row, stop and say so rather than invent a mapping.
@@ -121,7 +121,7 @@ Mutation check worth doing once: delete one option from the conversion, run the 
 | `component X needs param P` / `has no param P` | the `use` node and the declaration disagree; the message suggests the nearest name |
 | `param P is "v", which is not one of its options` | a variant key that upstream does not have |
 | `param P must be a literal option` | a binding was passed for a variant |
-| `components.X.params.P: unknown key ...` | a typo in a declaration; allowed keys are `default`, `options`, `optional` |
+| `components.X.params.P: unknown key ...` | a typo in a declaration; allowed keys are `default`, `options`, `optional`, `type` |
 | `... needs aria-label` | an `input`, `select` or `textarea` without an `aria-label` param |
 | `state key "a.b": a dot is not allowed` | a feature built a state key with a dot; use camelCase |
 

@@ -15,4 +15,4 @@ export function readDocument(text: string): { state: Record<string, any>; entryU
 /** The plugin with its parts injectable (tests, unusual hosts). It adds `navigate(href)` to the shell's app. */
 export function navigation(options: NavigationOptions): Plugin;
 /** The plugin as a shell lists it: `defineShell({ plugins: [withNavigation] })`. */
-export function withNavigation(environment: { win: any; fetchFunction: any; shellName: string }): Plugin;
+export function withNavigation(environment: { win: any; fetchFunction: any; shellName: string; basePath?: string }): Plugin;

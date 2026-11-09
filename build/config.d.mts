@@ -45,7 +45,11 @@ export interface LoadedConfig extends BuildConfig {
   /** The configuration file that was loaded (relative to the project root); a build stamps it. */
   configFile: string;
   pages: PageRecord[];
-  entries: { name: string; path: string; url: string }[];
+  entries: { name: string; path: string }[];
+  /** The generated style modules' overrides, by stylesheet path (written by loadConfig, used by the build). */
+  cssOverrides?: Map<string, string>;
+  /** Every stylesheet the generated style modules were written from. */
+  styleSources?: string[];
 }
 export const DEFAULT_OUT_DIR: 'dist';
 /** Reads and checks build.config.mjs, finds the pages and writes their generated modules to .agent-ui/. Throws with every problem listed. */
@@ -54,4 +58,6 @@ export function loadConfig(options?: {
   file?: string;
   mode?: { dev?: boolean; validator?: 'include' | 'omit' };
   fresh?: boolean;
+  /** Leave .agent-ui/ as the build wrote it (a server that only renders): the result has `pages` but no `entries`. */
+  readOnly?: boolean;
 }): Promise<LoadedConfig>;

@@ -200,12 +200,14 @@ export interface AppOptions {
   debug?: boolean;
   /** The path the site is served below, for example '/shop' (docs/BUILD.md, "A site below a base path"): written before every root-absolute URL the app puts in the page. Default '' (the root). Pages get it from the build. */
   basePath?: string;
+  /** The caller checks this same spec and namespaces before (a server makes one app per request): skip walking an unchanged spec again. */
+  specChecked?: boolean;
 }
 
 export function app(options: AppOptions): AppApi;
 /** How many times effects (bindings, derived values, watches) have run in this process: the counter measureAction reads. */
 export function countEffectRuns(): number;
-export function validate(spec: SpecNode, context: { namespaces?: Namespaces; initialState?: StateSnapshot }): string[];
+export function validate(spec: SpecNode, context?: { namespaces?: Namespaces; initialState?: StateSnapshot }): string[];
 /** Lays partial states over each other, namespace by namespace and key by key; later ones win. */
 export function mergeInitialState(...partialStates: Array<StateSnapshot | null | undefined>): StateSnapshot;
 export function signal<Value>(initialValue?: Value): { get(): Value; peek(): Value; set(value: Value): void };

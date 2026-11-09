@@ -33,6 +33,7 @@ The package is published to npm as `@ehtb/agent-ui` from a tag on `main`. The wo
    npx @ehtb/agent-ui --version
    ```
    Install it in an empty project, run `agent-ui check` and `agent-ui build`, and open the npm page to confirm the README, repository and license links.
+8. Update the published documentation site (`gh-pages`): its pages, search index and sitemap are generated from `README.md`, `docs/*.md`, `CHANGELOG.md`, `examples/README.md` and the cookbook, and the export stamps the new version into the branch's `source/` copy. Run the commands in `site/README.md` after the version bump and the tag, so the site documents the released version; commit and push the branch. Without this step the site keeps the previous release's documentation.
 
 ## If the workflow cannot publish
 

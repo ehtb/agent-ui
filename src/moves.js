@@ -9,6 +9,8 @@
 // stay, after it plays a translate from the old spot to the new one with Element.animate. Nothing is animated where there is no layout
 // (server rendering, the test DOM), while the app replays, for a visitor who prefers reduced motion, or for a row that follows the
 // pointer (src/follow.js). State is final before anything moves.
+import { markPagePlugin } from './spec-core.js';
+
 export const moves = (api) => {
   const canAnimate = () => !api.replaying && !globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   api.onReorder((staying) => {
@@ -37,4 +39,6 @@ export const moves = (api) => {
 };
 
 // The plugin as a page lists it (`plugins: [withMoves]`).
-export const withMoves = () => moves;
+export const withMoves = markPagePlugin(function withMoves() {
+  return moves;
+});

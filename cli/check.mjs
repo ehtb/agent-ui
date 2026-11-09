@@ -7,8 +7,8 @@
 // title, and its `status(state)` answers a valid HTTP value. It also checks every link in a page's spec and in its shell's: a literal `href` that starts with "/" must be the URL of a page,
 // a file in publicDir, or an API path, and a `soft` link must lead to a page that has the same shell (a soft link replaces the page
 // inside the shell, so a page without it could not be shown), and a `soft` link on a page without a shell is reported, because nothing
-// handles it. A page with parameters that lists no `paths` has no URL to render: it is listed as a note, and its finished spec and shell
-// content are still validated, as a build does.
+// handles it. A page with parameters that lists no `paths` has no URL to render: it is listed as a note, its finished spec and shell
+// content are still validated as a build does, and it is mounted at a sample URL to find what only a mount finds.
 //
 // It also reads every module the pages' entries reach the way the bundler does (build/module-graph.mjs), because the bundler's
 // rules for the source are found while a build reads the files, not when Node imports them: a re-export or `export *`, a default
@@ -24,8 +24,9 @@ import { pathToFileURL } from 'node:url';
 import { loadConfig } from '../build/config.mjs';
 import { buildModuleGraph } from '../build/module-graph.mjs';
 import { defaultFetchFunction, destroyApps, renderPage } from '../server/render-page.js';
+import { createApiFor } from '../server/ssr-handler.mjs';
 import { didYouMean } from '../src/messages.js';
-import { compileUrlPattern, sortBySpecificity } from '../src/url-pattern.js';
+import { compileUrlPattern, sortBySpecificity, withoutTrailingSlash } from '../src/url-pattern.js';
 import { toArray } from '../src/spec-core.js';
 import { validate } from '../src/validate.js';
 import { mentionsAgentUi } from './agent-instructions.mjs';
@@ -74,11 +75,12 @@ const collectLinks = (spec) => {
     if (Array.isArray(node)) return node.forEach(walk);
     if (!node || typeof node !== 'object') return;
     const href = node.props?.href !== undefined ? toText(node.props.href) : null;
-    if (href !== null) links.push({ href, soft: node.props.soft === true });
+    if (href !== null) links.push({ href, soft: node.props.soft === true, via: 'link' });
     for (const handler of Object.values(node.on ?? {})) {
       for (const [actionName, args] of typeof handler[0] === 'string' ? [handler] : handler) {
         const target = actionName === 'route.go' && args?.href !== undefined ? toText(args.href) : null;
-        if (target !== null) links.push({ href: target, soft: false });
+        // route.go is the soft link of a shell (src/shell.js): it replaces the page inside the shell that stays.
+        if (target !== null) links.push({ href: target, soft: false, via: 'route.go' });
       }
     }
     for (const key of ['children', 'otherwise', 'template']) walk(node[key]);
@@ -103,7 +105,7 @@ export const checkProject = async ({ config, root = process.cwd() }) => {
   const problems = [];
   // A request below the API base that the project's fetchFunction does not answer is a mistake in a resource's URL or in
   // the endpoint, and is reported with the page that made it.
-  const api = config.api ? (await import(pathToFileURL(resolve(root, config.api)))).createApi({ root }) : null;
+  const api = config.api ? await createApiFor({ config, root, where: 'agent-ui check' }) : null;
   const apiBase = api ? (api.apiBase ?? '/api') : null;
   const apiPrefix = api ? `${apiBase}/` : null;
   const answerRequest = config.fetchFunction ?? defaultFetchFunction;
@@ -137,18 +139,47 @@ export const checkProject = async ({ config, root = process.cwd() }) => {
     if (result.status === 'fulfilled') modules.set(pages[index].name, result.value);
     else problems.push(`${pages[index].file}: cannot load the page: ${result.reason.message}`);
   });
-  // A page that is not rendered here (it has parameters) still has a finished spec and shell content, which a
-  // production build checks as data; check does the same, so those pages are not the ones whose mistakes go unreported.
+  // A page that is not rendered at a URL of its own (it has parameters and lists no `paths`) still has a finished spec and shell
+  // content, which a production build checks as data; check does the same. It is also mounted at a sample URL, so that what only a
+  // mount finds is found too: a plugin the page needs and does not list, a resource definition, a derive that throws, the shell's
+  // reads. The sample URL's data is unknowable, so nothing is fetched and a page that never becomes ready is not a problem here.
   const checkedShells = new Set(); // a shell's content is the same for every page of it, so its problems are reported once
-  const checkWithoutRendering = (page, module, found) => {
-    for (const problem of validate(module.spec, { namespaces: module.namespaces })) found.push(`${page.file}: ${problem}`);
+  const sampleUrlOf = (path) => path.replace(/:[A-Za-z0-9]+/g, '1').replace(/\*[A-Za-z0-9]*/g, 'a/b');
+  const checkWithoutRendering = async (page, module, found) => {
+    const specProblems = validate(module.spec, { namespaces: module.namespaces });
+    for (const problem of specProblems) found.push(`${page.file}: ${problem}`);
     if (module.shellContent && !checkedShells.has(module.shellName)) {
       checkedShells.add(module.shellName);
       for (const problem of validate(module.shellContent.view, { namespaces: module.shellNamespaces })) found.push(`${page.file}: shell "${module.shellName}": ${problem}`);
     }
+    // A spec with problems does not mount (app() refuses it): it was reported above, once.
+    if (specProblems.length) return;
+    const sample = sampleUrlOf(page.path);
+    const where = `${page.file}: at ${sample} (a sample URL, because view.js lists no \`paths\`)`;
+    try {
+      const result = await renderPage(module.create, {
+        url: sample,
+        fetchFunction: () => new Promise(() => {}),
+        dev: true,
+        createShell: module.createShell,
+        basePath: config.basePath ?? '',
+        timeoutMs: 30,
+        stateForBrowser: config.stateForBrowser ?? null,
+      });
+      try {
+        await new Promise((resolveFlush) => setImmediate(resolveFlush));
+        for (const error of result.ui.errors) found.push(`${where}: ${describeError(error)}`);
+        for (const error of result.shellApp?.errors ?? []) found.push(`${where}: shell "${module.shellName}": ${describeError(error)}`);
+      } finally {
+        destroyApps(result.ui, result.shellApp);
+      }
+    } catch (error) {
+      // A page or a plugin may throw anything, a string included: say what it threw.
+      found.push(`${where}: cannot start the page: ${error?.message ?? String(error)}`);
+    }
   };
   const shellTexts = new Map(); // shell name -> { text, page } of the first page that gives its content
-  const pageAt = (target) => compiledPages.find((entry) => entry.pattern.match(target.length > 1 && target.endsWith('/') ? target.slice(0, -1) : target))?.page;
+  const pageAt = (target) => compiledPages.find((entry) => entry.pattern.match(withoutTrailingSlash(target)))?.page;
   const reportedLinks = new Set(); // the same broken link can be met twice (the page's spec and its shell's content), and is reported once
   const reportLink = (found, problem) => {
     if (reportedLinks.has(problem)) return;
@@ -161,13 +192,19 @@ export const checkProject = async ({ config, root = process.cwd() }) => {
     if (!module) continue;
     const record = { page, module, problems: [], jobs: [] };
     records.push(record);
-    for (const { href, soft } of [...collectLinks(module.spec), ...collectLinks(module.shellContent?.view)]) {
+    for (const { href, soft, via } of [...collectLinks(module.spec), ...collectLinks(module.shellContent?.view)]) {
       if (!href.startsWith('/') || href.startsWith('//')) continue;
       const target = href.split(/[?#]/)[0];
       const targetPage = pageAt(target);
       const isFile = extname(target) && publicDirectories.some((directory) => existsSync(join(root, directory, target)));
       const isApi = apiPrefix && (target === apiBase || target.startsWith(apiPrefix));
       if (!targetPage && !isFile && !isApi) reportLink(record.problems, `${page.file}: the link "${href}" is no page, no file in publicDir and no API path. ${didYouMean(target, pagePaths)}Pages: ${listPages(pagePaths)}`);
+      // route.go is a soft navigation written as a handler: it swaps the page inside the shell that stays, so its target must be
+      // a page of the same shell, exactly like a `soft: true` link.
+      if (via === 'route.go' && targetPage && modules.has(targetPage.name) && targetPage.name !== page.name && modules.get(targetPage.name).shellName !== module.shellName) {
+        const other = modules.get(targetPage.name);
+        reportLink(record.problems, `${page.file}: route.go goes to "${href}", which ${other.shellName ? `has the shell "${other.shellName}"` : 'has no shell'}, and this page ${module.shellName ? `has the shell "${module.shellName}"` : 'has no shell'}. route.go replaces the page inside the shell that stays: send it to a page of the same shell, or use a link so the whole document changes`);
+      }
       if (soft && !module.shellName) {
         reportLink(record.problems, `${page.file}: the soft link "${href}" is on a page without a shell, so nothing handles \`soft\` and it is a normal link. Give the page a shell (\`shell\` in page.js and view.js), or remove \`soft\``);
       } else if (soft && targetPage && modules.has(targetPage.name) && modules.get(targetPage.name).shellName !== module.shellName) { // a page that could not be loaded is reported already
@@ -181,7 +218,8 @@ export const checkProject = async ({ config, root = process.cwd() }) => {
       if (!earlier) shellTexts.set(module.shellName, { text, page });
     }
     // A page with parameters is rendered at the URLs its view.js lists in `paths` (build/page-paths.mjs), the ones a static build writes.
-    // One that lists none has no URL of its own to render: its spec is validated, and `agent-ui serve` renders it for real URLs.
+    // One that lists none has no URL of its own to render: its spec is validated and it is mounted at a sample URL, and
+    // `agent-ui serve` renders it for real URLs.
     let urls;
     try {
       urls = (await urlsOfPage(page, module)) ?? [];
@@ -191,8 +229,8 @@ export const checkProject = async ({ config, root = process.cwd() }) => {
     }
     urlsByPage.set(page.path, urls);
     if (!urls.length) {
-      notes.push(`${page.path} has parameters and its view.js lists no \`paths\`, so check does not render it (its spec is validated). Export paths = ["${page.path.replace(/:[A-Za-z0-9]+/g, '1').replace(/\*[A-Za-z0-9]*/g, 'a/b')}"] to render it`);
-      checkWithoutRendering(page, module, record.problems);
+      notes.push(`${page.path} has parameters and its view.js lists no \`paths\`, so check does not render it at its URLs (its spec is validated and it is started at a sample URL). Export paths = ["${sampleUrlOf(page.path)}"] to render it`);
+      await checkWithoutRendering(page, module, record.problems);
     }
     for (const url of urls) record.jobs.push({ record, module, url });
   }

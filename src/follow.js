@@ -8,7 +8,7 @@
 // the CSS custom properties --follow-x and --follow-y; the CSS decides what to do with them (a transform). No coordinate enters the
 // state or the log, and the element keeps its grab point when a list reorders under it (the runtime's reorder hook, `api.onReorder`).
 // The runtime hands the plugin every write of the prop (`api.handleProperty`), also the ones made before the plugin was installed.
-const nextFrame = (callback) => (globalThis.requestAnimationFrame ? globalThis.requestAnimationFrame(callback) : setTimeout(callback, 16));
+import { markPagePlugin, nextFrame } from './spec-core.js';
 
 export const follow = (api) => {
   const document = globalThis.document;
@@ -68,4 +68,6 @@ export const follow = (api) => {
 };
 
 // The plugin as a page lists it (`plugins: [withFollow]`).
-export const withFollow = () => follow;
+export const withFollow = markPagePlugin(function withFollow() {
+  return follow;
+});

@@ -1,6 +1,7 @@
 // Development server: build (stable names), serve with hot reload, rebuild when sources change. Pages render in the
 // browser (nothing is rendered ahead), so an edit shows without stale server-side modules.
 //   agent-ui dev [--config=<file>] [--port=8080] [--host=127.0.0.1]     (project root = current directory)
+// The port is --port, otherwise the PORT environment variable, otherwise 8080.
 // A failed rebuild prints the error. A build that fails before the output is written leaves the last good one being served; one that fails
 // after it (the output directory is rewritten first) leaves the new files, and the page is reloaded by hand.
 import { watch } from 'node:fs';
@@ -12,7 +13,7 @@ import { toArray } from '../src/spec-core.js';
 import { PAGES_DIRECTORY } from '../build/pages.mjs';
 import { createStaticServer } from './static-handler.mjs';
 import { hostsFor } from '../server/request.mjs';
-import { parseOrExit } from './arguments.mjs';
+import { parseOrExit, portOrExit } from './arguments.mjs';
 import { createHotReload, versionOutput } from './hot-reload.mjs';
 import { isMain } from './is-main.mjs';
 
@@ -105,12 +106,37 @@ export const startDev = async ({ root = projectRoot, port = 8080, host = '127.0.
   await rebuild();
   if (!built) throw new Error('agent-ui dev: the first build failed, so there is no site to serve. Fix the error above and start it again.');
   server = createStaticServer(resolve(root, config.outDir), { intercept: hotReload.intercept, transformHtml: hotReload.transformHtml, assetsDir: config.assetsDir ?? 'assets', rewrites: () => pages.map((page) => ({ pattern: page.path, page: `${page.name}.html` })), hosts: hostsFor(host), basePath: config.basePath ?? '' });
-  await new Promise((resolveListening) => server.listen(port, host, resolveListening));
+  const stop = () => {
+    watchers.forEach((watcher) => watcher.close());
+    clearTimeout(timer);
+    hotReload.close();
+    server.closeAllConnections?.();
+    server.close();
+  };
+  // A port that is taken (EADDRINUSE) is an error event, not a rejection: without a listener the process dies with a stack and the
+  // watchers stay open. The caller gets the cause, and stop() ends everything this server started.
+  try {
+    await new Promise((resolveListening, rejectListening) => {
+      server.once('error', rejectListening);
+      server.listen(port, host, () => {
+        server.off('error', rejectListening);
+        resolveListening();
+      });
+    });
+  } catch (error) {
+    stop();
+    throw new Error(`agent-ui dev: cannot listen on ${host}:${port}: ${String(error.message).replace(/^listen \w+: /, '')}. Choose another port with --port=<number>`, { cause: error });
+  }
   log(`dev server at http://${host}:${server.address().port}${config.basePath ?? ''}/ (hot reload on)`);
-  return { server, rebuild, stop: () => { watchers.forEach((watcher) => watcher.close()); clearTimeout(timer); hotReload.close(); server.closeAllConnections?.(); server.close(); } };
+  return { server, rebuild, stop };
 };
 
 if (isMain(import.meta.url)) {
   const options = parseOrExit(process.argv.slice(2), { config: 'text', port: 'number', host: 'text' }, { command: 'agent-ui dev' });
-  await startDev({ port: options.port ?? 8080, host: options.host ?? '127.0.0.1', configFile: options.config });
+  try {
+    await startDev({ port: portOrExit(options, { command: 'agent-ui dev' }), host: options.host ?? '127.0.0.1', configFile: options.config });
+  } catch (error) {
+    console.error(error?.message ?? error);
+    process.exit(1);
+  }
 }

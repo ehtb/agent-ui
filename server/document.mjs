@@ -73,8 +73,10 @@ const HEAD_REGION = new RegExp(`${escapeRegex(HEAD_START)}[\\s\\S]*?${escapeRege
 const BODY_REGION = new RegExp(`${escapeRegex(BODY_START)}[\\s\\S]*?${escapeRegex(BODY_END)}\\n?`);
 const DESCRIPTION_META = /<meta name="description" content="[^"]*">\n?/;
 const TITLE = /<title>[\s\S]*?<\/title>/;
-const withRegion = (html, text, before) => {
-  const at = html.lastIndexOf(before);
+// Inserts a region before the first occurrence of `before` (the end of <head>) or the last (the end of <body>): a body script may
+// contain the literal "</head>" in its text, and that must never be taken for the place head elements go.
+const withRegion = (html, text, before, last = false) => {
+  const at = last ? html.lastIndexOf(before) : html.indexOf(before);
   return !text || at < 0 ? html : `${html.slice(0, at)}${text}${html.slice(at)}`;
 };
 
@@ -90,7 +92,7 @@ export const injectHead = (pageHtml, { title, description, html: htmlAttributes 
   html = html.replace(HEAD_REGION, '').replace(BODY_REGION, '');
   html = withAttributes(withAttributes(html, 'html', htmlAttributes), 'body', bodyAttributes);
   html = withRegion(html, regionText(tags, MARKER_HEAD, HEAD_START, HEAD_END), '</head>');
-  return withRegion(html, regionText(bodyTags, MARKER_BODY, BODY_START, BODY_END), '</body>');
+  return withRegion(html, regionText(bodyTags, MARKER_BODY, BODY_START, BODY_END), '</body>', true);
 };
 
 // The finished document for one render: markup, state, and (when the app module exports describePage) the page's

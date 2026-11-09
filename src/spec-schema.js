@@ -31,7 +31,10 @@ export const createSpecSchema = () => {
     or: listOf(operand, 2),
     join: listOf(operand, 1),
   };
+  // "click", "keydown.Enter", "keydown.Control+Shift+k": a key chord is only for keydown and keyup (the validator refuses
+  // "click.Enter"), so the schema does too.
   const eventNames = grammar.events.join('|');
+  const keyEventNames = grammar.keyEvents.join('|');
   return {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
     title: 'agent-ui spec',
@@ -60,8 +63,7 @@ export const createSpecSchema = () => {
           classes: { type: 'object', additionalProperties: reference('binding') },
           on: {
             type: 'object',
-            // "click", "keydown.Enter", "keydown.Control+Shift+k": an event name, optionally with a key chord for key events.
-            patternProperties: { [`^(${eventNames})(\\.[^.]+)?$`]: reference('handlers') },
+            patternProperties: { [`^(?:(${keyEventNames})\\.[^.]+|(?!(?:${keyEventNames})\\.)(${eventNames}))$`]: reference('handlers') },
             additionalProperties: false,
           },
           transition: { type: 'number', exclusiveMinimum: 0 },
@@ -79,7 +81,9 @@ export const createSpecSchema = () => {
       when: {
         type: 'object',
         properties: { when: reference('binding'), children: reference('nodes'), otherwise: reference('nodes') },
+        // A `when` with neither shows nothing either way, which the validator refuses.
         required: ['when'],
+        anyOf: [{ required: ['children'] }, { required: ['otherwise'] }],
         additionalProperties: false,
       },
     },

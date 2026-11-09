@@ -16,6 +16,12 @@ export const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 export const ELEMENT_FIELDS = ['id', 'classes', 'on', 'transition'];
 
 
+// A page lists plugin factories, (environment) => plugin; an app made with app() lists the plugin itself, (api) => void. The
+// package's factories are marked so each side can refuse the other's with the fix (a factory in app() would install nothing).
+// Symbol.for: a page and the runtime may be two copies of the package, and the mark must still be the same one.
+export const PAGE_PLUGIN = Symbol.for('agent-ui.pagePlugin');
+export const markPagePlugin = (factory) => Object.assign(factory, { [PAGE_PLUGIN]: true });
+
 // A value that is a literal or a function of the state: the literal, or the function applied to the state.
 export const valueForState = (value, state) => (typeof value === 'function' ? value(state) : value);
 
@@ -57,6 +63,10 @@ export const isSameValue = (previous, next, depth) => {
 
 // Reads a dotted path such as "target.value" from an event; shared by element handlers and windowEvents.
 export const readEventPath = (event, path) => path.split('.').reduce((value, part) => value?.[part], event);
+
+// The next animation frame, or a 16 ms timer where there is none (the test DOM, an older browser). One definition, because the
+// runtime (entering transitions) and the follow plugin (writing the offset) must schedule the same way.
+export const nextFrame = (callback) => (globalThis.requestAnimationFrame ? globalThis.requestAnimationFrame(callback) : setTimeout(callback, 16));
 
 // "Control+Shift+k": modifiers in a fixed order, then event.key. Used to match `keydown.Control+Shift+k` handlers.
 export const eventKeyName = (event) =>

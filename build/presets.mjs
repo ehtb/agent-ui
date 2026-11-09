@@ -16,13 +16,14 @@
 import { realpathSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { toPosixPath } from './import-path.mjs';
 
 const frameworkDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 export const frameworkBuildOptions = ({ dev = false, validator = dev ? 'include' : 'omit', projectRoot = process.cwd() } = {}) => {
   if (validator !== 'include' && validator !== 'omit') throw new Error(`frameworkBuildOptions: validator must be "include" or "omit", got ${JSON.stringify(validator)}. Write validator: 'include'`);
   // Where the framework's files are, as the bundler names them: relative to the project root, real paths.
-  const prefix = relative(realpathSync(projectRoot), realpathSync(frameworkDirectory)).split('\\').join('/');
+  const prefix = toPosixPath(relative(realpathSync(projectRoot), realpathSync(frameworkDirectory)));
   const at = (file) => (prefix ? `${prefix}/${file}` : file);
   return {
     // In development the framework's own modules (src/**) are one chunk that never changes while a project is edited, so the hot swap of a

@@ -19,6 +19,7 @@ import { extname, resolve } from 'node:path';
 import { stripCss, stripJavaScript } from './strip.mjs';
 import { composeSourceMap, createSourceMap } from './source-map.mjs';
 import { BuildError } from './parse-module.mjs';
+import { didYouMean } from '../src/messages.js';
 
 const contentHash = (text) => createHash('sha256').update(text).digest('hex').slice(0, 8);
 const sanitize = (name) => name.replace(/[^A-Za-z0-9_$]/g, '_');
@@ -34,6 +35,11 @@ const TRANSFORM_FIX = "Write transform: (code, { kind, sourceMap }) => { const r
 
 export const readTransformResult = (result, { file, kind, sourceMap }) => {
   const where = `transform (${kind} of chunk "${file}")`;
+  // An async transform (esbuild.transform rather than transformSync) answers a Promise, which reads like an object; say so instead
+  // of complaining about its missing "code".
+  if (result !== null && typeof result === 'object' && typeof result.then === 'function') {
+    throw new BuildError(`${where}: returned a Promise. The build cannot wait here, so transform must be synchronous: call the minifier's synchronous entry (esbuild: transformSync, not transform). ${TRANSFORM_FIX}`);
+  }
   if (!sourceMap) {
     if (typeof result === 'string') return { code: result, map: null };
     throw new BuildError(`${where}: returned ${result === null ? 'null' : typeof result}, and with sourceMap: false it must return the code as a string. ${TRANSFORM_FIX}`);
@@ -42,7 +48,7 @@ export const readTransformResult = (result, { file, kind, sourceMap }) => {
     throw new BuildError(`${where}: returned ${result === null ? 'null' : typeof result}, and with sourceMap: true (sourceMaps is on) it must return { code, map }, the minifier's code and its source map. ${TRANSFORM_FIX}`);
   }
   for (const key of Object.keys(result)) {
-    if (key !== 'code' && key !== 'map') throw new BuildError(`${where}: unknown key "${key}" in the result. Return { code, map } and nothing else`);
+    if (key !== 'code' && key !== 'map') throw new BuildError(`${where}: unknown key "${key}" in the result. ${didYouMean(key, ['code', 'map'])}Return { code, map } and nothing else`);
   }
   if (typeof result.code !== 'string') throw new BuildError(`${where}: "code" must be the minified code as a string. ${TRANSFORM_FIX}`);
   if (/^\/\/# sourceMappingURL=/m.test(result.code)) throw new BuildError(`${where}: the code ends with its own "//# sourceMappingURL=" comment. Have the minifier write no comment (esbuild: sourcemap: 'external'); the build adds the comment for the file it writes`);

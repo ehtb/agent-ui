@@ -43,6 +43,17 @@ export const checkViewExports = (viewModule, file) => {
   }
 };
 
+// A page.js must export `page`. Without this, a misspelt export (`pages`) reaches definePage as `undefined`, and the message names
+// the URL rather than the file. A page.js that exports the view's names is the file split the wrong way round.
+export const checkPageExports = (pageModule, file) => {
+  if (pageModule.page !== undefined) return;
+  const names = Object.keys(pageModule);
+  const misplaced = names.find((name) => VIEW_EXPORTS.includes(name));
+  if (misplaced) fail(file, `exports "${misplaced}" instead of "page"`, `page.js holds the page's behavior: write \`export const page = { head: { title: '...' } }\`. Export \`${misplaced}\` from the view.js next to it instead`);
+  const suggestion = names.map((name) => didYouMean(name, ['page'])).find(Boolean) ?? '';
+  fail(file, 'does not export "page"', `${suggestion}Write \`export const page = { head: { title: '...' } }\` in ${file}: page.js holds the page's behavior, and the view.js next to it holds the content`);
+};
+
 // The shape of `head`, checked when the page is defined (development only: this module is stubbed in production).
 const checkHeadShape = (head, where) => {
   const problem = (what, fix) => fail(where, what, fix);
@@ -147,7 +158,7 @@ export const checkPage = (page, { path, view, layout, pending, spec, shell: shel
   if (!isPlainObject(page)) fail(where, 'a page must be a plain object', 'Export `const page = { head }` from page.js, and `export const view = ...` from the view.js next to it');
   for (const key of Object.keys(page)) {
     if (PAGE_KEYS.includes(key)) continue;
-    if (key === 'view' || key === 'layout' || key === 'pending') fail(where, `"${key}" does not belong in page.js`, `Move it to the view.js next to page.js: \`export const ${key} = ...\`. page.js keeps the page's behavior: ${PAGE_KEYS.join(', ')}`);
+    if (key === 'view' || key === 'layout' || key === 'pending' || key === 'paths') fail(where, `"${key}" does not belong in page.js`, `Move it to the view.js next to page.js: \`export const ${key} = ...\`. page.js keeps the page's behavior: ${PAGE_KEYS.join(', ')}`);
     fail(where, `unknown key "${key}"`, `${didYouMean(key, PAGE_KEYS)}Allowed keys: ${PAGE_KEYS.join(', ')}`);
   }
   if (page.head === undefined) fail(where, 'missing "head"', 'Add `head: { title: \'Page title\' }` to page.js');
