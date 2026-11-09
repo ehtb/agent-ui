@@ -293,7 +293,8 @@ test('the packed tarball installs into a project and builds with the agent-ui co
   try {
     const packed = spawnSync('npm', ['pack', '--json', '--pack-destination', packDirectory], { cwd: repositoryRoot, encoding: 'utf8' });
     assert.equal(packed.status, 0, packed.stderr);
-    const [info] = JSON.parse(packed.stdout);
+    // npm 10 and 11 print an array of packages, npm 12 an object keyed by package name.
+    const [info] = Object.values(JSON.parse(packed.stdout));
     const tarball = join(packDirectory, info.filename);
     assert.ok(existsSync(tarball), `npm pack did not write ${tarball}`);
     writeFileSync(join(project, 'package.json'), '{"name":"agent-ui-tarball-smoke","private":true,"type":"module"}');
