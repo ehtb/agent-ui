@@ -1,0 +1,11 @@
+# Written by the build and by `npm run generate`; both are regenerated on every build, so they are not committed.
+# (`dist/` and `node_modules/` are also ignored by the repository's root .gitignore, and repeated here so the copy of
+# this project on the gh-pages branch keeps its own build out of that branch.)
+.agent-ui/
+dist/
+generated/
+public/search.json
+public/sitemap.xml
+
+node_modules/
+package-lock.json

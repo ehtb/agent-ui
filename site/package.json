@@ -1,0 +1,19 @@
+{
+  "name": "agent-ui-docs-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The agent-ui documentation site, built with agent-ui and exported as a static site.",
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "build": "npm run generate && agent-ui build --static",
+    "check": "npm run generate && agent-ui check",
+    "dev": "npm run generate && agent-ui dev",
+    "serve": "agent-ui serve",
+    "postinstall": "node scripts/link-package.mjs",
+    "test": "npm run check"
+  },
+  "dependencies": {
+    "@ehtb/agent-ui": "file:.."
+  }
+}
