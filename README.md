@@ -125,7 +125,7 @@ Everything an application does fits into six primitives:
 
 ### Built-in Plugins
 
-Pages explicitly declare the plugin factories they need in `page.js` and download only those modules:
+Plugins are optional: a page lists the factories it needs in `page.js` and downloads only those modules. None is loaded for it.
 
 | Plugin         | Import                       | Use It When                                                              |
 | -------------- | ---------------------------- | ------------------------------------------------------------------------ |

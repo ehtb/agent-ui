@@ -474,20 +474,20 @@ Updates flush in one microtask. After `dispatch`, `state()` and `derived()` are 
 
 A plugin is `(api) => void`, run once after mount. A plugin that talks to the outside world must not act while `api.replaying` is true (see `resources`).
 
-**The plugins the package ships.** Each is its own import, so a page downloads only the ones it lists. A page lists the `with...` form in `plugins` of page.js; an app made with `app()` lists the plugin itself. `agent-ui explain plugins` prints this table.
+**The plugins the package ships are optional.** None is loaded for you: rendering, state, actions, bindings and list keys work without any plugin, and a page lists only the ones it uses. A plugin is how a page reaches outside the app — the network, timers, window and document events, the document's head — and each one is its own import, so a page downloads only what it lists. Data is a plugin too: `withResources` runs the `resources` a namespace declares, and it is the only way a page fetches. `agent-ui explain plugins` prints this table.
 
-| Plugin (page form) | Import | List it when | Without it |
-|---|---|---|---|
-| `withResources` (`resources(fetch)` for `app()`) | `@ehtb/agent-ui/resources` | a namespace declares `resources` | the page fails at start: "declares resources, but no plugin loads them" |
-| `({ win }) => windowEvents(win, { ... })` | `@ehtb/agent-ui/window-events` | an action answers an event of the window or the document (`resize`, `keydown.Control+k`, `online`) | nothing listens |
-| `withHead` | `@ehtb/agent-ui/head` | the page's `head` is a function of the state and must follow it in the browser | the page fails at start in development: "head.title follows the state, but nothing keeps the browser's document current" |
-| `withFollow` (`follow` for `app()`) | `@ehtb/agent-ui/follow` | the spec uses the `follow` prop (a dragged row under the pointer) | the app fails at mount: "the spec uses "follow", but no plugin handles it" |
-| `withMoves` (`moves` for `app()`) | `@ehtb/agent-ui/moves` | rows with `transition` should slide to their new place when the list reorders | rows jump; development says so in the console once per list |
-| `withNavigation` (in a shell's `plugins`) | `@ehtb/agent-ui/navigation` | the shell's pages link to each other with `soft: true` or `route.go` | soft links are normal page loads |
+| Plugin | Import | What it adds |
+|---|---|---|
+| `withResources` | `@ehtb/agent-ui/resources` | Fetches the `resources` a namespace declares, the only way a page loads data; a page that declares resources without it fails at start. With `app()`, list `resources(fetch)` instead. |
+| `windowEvents` | `@ehtb/agent-ui/window-events` | Actions that answer a window or document event (`resize`, `keydown.Control+k`, `online`); nothing else listens to them. A page lists `({ win }) => windowEvents(win, { ... })`. |
+| `withHead` | `@ehtb/agent-ui/head` | Keeps the browser's document current while `head` reads state; a head with fixed values is written when the page is rendered and needs no plugin. |
+| `withFollow` | `@ehtb/agent-ui/follow` | The `follow` prop, a dragged row under the pointer (with `app()`, `follow`); the app fails at mount when the spec uses it and no plugin handles it. |
+| `withMoves` | `@ehtb/agent-ui/moves` | Rows with `transition` slide to their new place when the list reorders (with `app()`, `moves`). |
+| `withNavigation` | `@ehtb/agent-ui/navigation` | `soft: true` links and `route.go` between a shell's pages, a page load made faster; a plain link is a normal page load. |
 
 Two helpers are for writing a plugin, not plugins themselves: `mountElement` (`@ehtb/agent-ui/mount-element`) claims an element to draw into, and `syncApps` (`@ehtb/agent-ui/sync-apps`) connects two apps. The debug console is not listed either: `debug: true` loads it.
 
-A page lists plugin factories, `plugins: [withResources]`, and each factory receives the environment, `(environment) => (api) => void`: `win`, `fetchFunction`, `dev`, `isServerRendering` and, for a shell's plugins, `shellName`.
+A page lists plugin factories, `plugins: [withResources]`; an app made with `app()` lists the plugin itself. Each factory receives the environment, `(environment) => (api) => void`: `win`, `fetchFunction`, `dev`, `isServerRendering` and, for a shell's plugins, `shellName`.
 
 **The server runs the plugins too.** While a page is rendered on the server (`agent-ui serve`, `agent-ui build`'s static pages, `agent-ui check`), `isServerRendering` is `true` and `win` is a stand-in that holds only `location`, `addEventListener`, `removeEventListener`, `setTimeout`, `clearTimeout` and the same two listener functions on `win.document`. In a browser `isServerRendering` is `false`; in a test that mounts a page with the shim it is not set (so false), and the plugin runs against the shim's window. A plugin with an effect of its own (a timer, a listener on the window, a request, a library that needs a real browser) starts with `if (isServerRendering) return;`. A plugin that reaches for anything else on the server's window fails the render with the original message and this advice. A plugin whose library needs a real canvas or layout, which the shim has not either (Chart.js), also checks `win === window`, as `examples/loading-states` does. Recipe: `browser-only-plugin` (`agent-ui explain browser-only-plugin`).
 
