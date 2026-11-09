@@ -28,5 +28,5 @@ jobs:
         run: npm test
       - name: Update npm (trusted publishing needs 11.5.1 or newer)
         run: npm install --global npm@11
-      - name: Publish with provenance (trusted publishing, no token)
-        run: npm publish --access public --provenance
+      - name: Stage the release with provenance (trusted publishing, no token; a maintainer approves it on npm)
+        run: npm stage publish --access public --provenance
