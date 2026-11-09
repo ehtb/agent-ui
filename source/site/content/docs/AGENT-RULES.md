@@ -122,7 +122,7 @@ The lifecycle actions are the only writers of the owned keys, and the response i
 
 A page rendered on the server already holds its resources' output. By default the browser loads it again on mount; add `revalidate: 'never'` (with `owns`) when that output is complete and fresh enough for the first paint, so the first mount trusts the document and a later watched change still loads. Do not combine it with `onTimeout: 'serve'`, whose state may be partial.
 
-Everything else external is a plugin. The ones the package ships (`agent-ui explain plugins` prints this with the details):
+Everything else external is a plugin, and plugins are optional: a page lists only the ones it uses. The ones the package ships (`agent-ui explain plugins` prints this with the details):
 
 | A page lists | From | When |
 |---|---|---|

@@ -26,7 +26,9 @@ const isWord = (character) => /[A-Za-z0-9_$-]/.test(character);
 const pushText = (parts, text) => {
   if (!text) return;
   const last = parts[parts.length - 1];
-  if (last && last.text !== undefined) last.text += text;
+  // Only plain text may grow: a span with a class is a finished token, and appending to it would paint the code that
+  // follows as if it were part of that token.
+  if (last && last.className === undefined) last.text += text;
   else parts.push({ text });
 };
 

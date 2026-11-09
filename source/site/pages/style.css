@@ -742,7 +742,8 @@ pre {
   background: transparent;
   color: inherit;
   font-size: inherit;
-  white-space: pre;
+  /* The block wraps long lines (see .code-body); the inner code must not opt out of it. */
+  white-space: inherit;
 }
 
 .doc-heading {
@@ -805,7 +806,8 @@ pre {
   border-bottom: 0;
 }
 
-.doc-content td code {
+.doc-content td code,
+.doc-content td .inline-code {
   white-space: nowrap;
 }
 
@@ -865,12 +867,15 @@ pre {
   display: block;
   margin: 0;
   padding: 18px 20px;
-  overflow-x: auto;
   color: var(--code-ink);
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.7;
-  white-space: pre;
+  /* Wrap instead of scrolling sideways: a documentation line is often longer than the column, and a hidden right edge
+     with an overlay scrollbar (the macOS default) reads as text that was cut off. Indentation is kept, and a token too
+     long for the line breaks anywhere rather than leave the block. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   tab-size: 2;
 }
 
