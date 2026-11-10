@@ -1,0 +1,71 @@
+name: Site
+
+# The documentation site is built from this repository (README.md, docs/, CHANGELOG.md, examples/README.md, the
+# cookbook, the framework itself and site/). On a push to main the `gh-pages` branch is rewritten from it, so the site
+# shows the version, the documentation and the build of main. See site/README.md, "Publishing".
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# One update of the branch at a time, in order. A pull request check is replaced by a newer one.
+concurrency:
+  group: site-${{ github.event_name == 'pull_request' && github.ref || 'gh-pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check the site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install the site (it links the package next to it)
+        working-directory: site
+        run: npm install --no-audit --no-fund
+      - name: Render every page and report spec, link and data problems
+        working-directory: site
+        run: npm run check
+
+  deploy:
+    name: update the gh-pages branch
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the site
+        working-directory: site
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: Write the tree of the gh-pages branch
+        working-directory: site
+        run: node scripts/export.mjs ../gh-pages
+      - name: Commit and push when something changed
+        working-directory: gh-pages
+        run: |
+          git add --all
+          if git diff --cached --quiet; then
+            echo "The site is up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --message "Update the site from ${GITHUB_SHA::7}"
+          git push origin HEAD:gh-pages
