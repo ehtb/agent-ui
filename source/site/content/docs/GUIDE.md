@@ -24,7 +24,7 @@ Each page is its own entry in the build, so a page downloads the code it imports
 
 | Where | What happens |
 |---|---|
-| File host (`agent-ui build --static`) | Every page is rendered at build time and written to `<path>/index.html` (the page `/` is `index.html`). A static site names every page, so a page with parameters is an error. |
+| File host (`agent-ui build --static`) | Every page is rendered at build time and written to `<path>/index.html` (the page `/` is `index.html`). A static site names every page: a page with parameters is written once for every URL its `view.js` lists in `paths`, and one that lists none is an error. |
 | Render server (`agent-ui serve`, or `createSsrHandler` inside your own server) | Every request whose path matches a page's URL pattern is rendered for that URL with the page's own `create()`. The HTML carries the rendered page and its state. The page's `ready(state)` says when its data is there, and the server waits for it; after `renderTimeoutMs` (default 2000) the handler answers 503 rather than serving a half-loaded page with 200. The page's `status(state)` sets the HTTP status, for example 404 for an unknown id. The handler's `initialStateFor`, `stateForBrowser` and `transformResponse` hooks add public session state, choose what the state script carries, and change an answer's headers or body (section 4, "A session, a CSP and response headers"). A client that disconnects aborts the render; `request.signal` says so. |
 | Browser | The page starts from the state the server embedded (`route.hydrated` turns true when it has taken over), reads the URL's parameters into `route.params`, and runs its resources. A resource declared `revalidate: 'never'` trusts the server's output on mount instead of loading it a second time (below, "A page that needs data"). |
 
@@ -61,7 +61,7 @@ No state, no data. Create `pages/about/page.js` exporting `page = { head: { titl
 
 ### A page with a parameter
 
-Name the folder `[id]`. Read the value with `{ state: 'route.params.id' }` in the spec and `get('route.params')` in `derive`. The page is rendered per request by `agent-ui serve`; a static site (`agent-ui build --static`) has no such pages.
+Name the folder `[id]`. Read the value with `{ state: 'route.params.id' }` in the spec and `get('route.params')` in `derive`. The page is rendered per request by `agent-ui serve`; a static site (`agent-ui build --static`) writes it once for every URL its `view.js` lists in `paths` (section 6, "Static generation").
 
 A parameter that names nothing must still render something. Derive `isNotFound` (in the page's namespace), show a message, and return 404 from the page's own `status(state)`:
 
@@ -75,7 +75,7 @@ Create its folder, `pages/event/archived/page.js`. It wins for that URL. The par
 
 ### A wildcard page
 
-Name the folder `[...path]`, as in `pages/event/[...path]/page.js`. It catches everything deeper and is usually a not-found page. Give it `status: () => 404`. It has parameters, so a static site cannot carry it, and `agent-ui check` lists it as a note.
+Name the folder `[...path]`, as in `pages/event/[...path]/page.js`. It catches everything deeper and is usually a not-found page. Give it `status: () => 404`. It has parameters, so a static build needs the URLs in `paths`, and a 404 status stops `--static` (a file host answers every file with 200); `agent-ui check` lists it as a note when `paths` is missing.
 
 ### A page that needs data
 
@@ -238,7 +238,7 @@ server.use(await createSsrHandler({
 - There is no file-upload parser, no streaming request body, no SSE endpoint and no WebSocket endpoint. Receive those in the host server; pass a parsed body to the API as `request.body`, or serve the connection beside the handler.
 - A modal, menu or popover is not a component with a focus trap. Use a native `dialog` with explicit state and copy recipe `modal`: its plugin traps the focus, restores it on close and marks the background `inert`.
 - Translation, locale-aware URLs and right-to-left direction are the project's. Text and `dir` are ordinary state and attributes; the framework ships no message catalogue.
-- A static site (`agent-ui build --static`) writes every page, and a page with parameters once for every URL its `view.js` lists in `export const paths = [...]` (or an async function); a page with parameters that lists none, or a status other than 200, stops the build with the reason. `agent-ui check` renders the same URLs and prints a note for a page with parameters that lists none.
+- A static site (`agent-ui build --static`) writes every page, and a page with parameters once for every URL its `view.js` lists in `export const paths = [...]` (or an async function); a page with parameters that lists none, or a status other than 200, stops the build with the reason. `agent-ui check` renders the same URLs and prints a note for a page with parameters that lists none (it is started at a sample URL, without fetching data).
 - The API is Node code. A file host has no API: the static pages and the browser app work, but calls to `/api/...` and plain form posts do not.
 - A site below a path of its domain is `basePath: '/shop'` in `build.config.mjs` (`BUILD.md`, "A site below a base path"). Specs, folders, resources and the API keep writing the site's own paths; a `url()` in CSS is relative to the stylesheet.
 - Code splitting is by page: everything a page lists is in its chunk. A heavy feature inside one page is a plain `import()` (a lazy chunk).

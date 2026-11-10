@@ -213,7 +213,7 @@ When using Claude Code, Cursor, OpenCode, or another coding agent in a project w
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | agent-ui build          | Builds production assets to dist/ (hashed filenames, comments stripped, validator omitted). Pass --dev to retain the validator, or --static to pre-render static HTML files. |
 | agent-ui dev            | Starts the dev server with hot-reload (swaps edited pages in place while replaying action logs to preserve state).                                                           |
-| agent-ui serve          | Starts a local test server (http://localhost:8080) for SSR pages, JSON APIs, and form posts. Not intended for production exposure—deploy behind your host server or CDN.     |
+| agent-ui serve          | Starts a local test server (http://localhost:8080, or `$PORT`; `--port` wins) for SSR pages, JSON APIs, and form posts. Not intended for production exposure—deploy behind your host server or CDN.     |
 | agent-ui check          | Renders every page in development mode headlessly, verifying all specs, links, data shapes, and size budgets at once.                                                        |
 | agent-ui explain [name] | Prints the canonical implementation for a cookbook recipe or grammar rule directly to stdout. Lists all available topics if called without arguments.                        |
 | agent-ui schema         | Emits the complete JSON Schema for the UI spec grammar.                                                                                                                      |

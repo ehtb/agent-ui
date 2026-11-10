@@ -1,12 +1,12 @@
 # Releasing
 
-The package is published to npm as `@ehtb/agent-ui` from a tag on `main`. The workflow `.github/workflows/release.yml` publishes with provenance; nothing is published from a working copy.
+The package is published to npm as `@ehtb/agent-ui` from a tag on `main`. The workflow `.github/workflows/release.yml` stages the release with provenance, and a maintainer approves it on npm with 2FA; nothing is published from a working copy.
 
 ## One-time setup
 
 - The npm account or organization owns the `@ehtb` scope. `publishConfig.access` is `public`, so the package is public.
 - The repository is public and **private vulnerability reporting** is enabled (the Security tab), because `SECURITY.md` points there.
-- The `NPM_TOKEN` repository secret holds an npm token that can publish `@ehtb/agent-ui` (or the workflow is switched to npm trusted publishing and the token is removed).
+- npm **trusted publishing** is configured for `@ehtb/agent-ui` (npmjs.com, the package's Settings, Trusted Publisher: GitHub Actions, repository `ehtb/agent-ui`, workflow `release.yml`) with the permission **npm stage publish** only (not `npm publish`), and the package access is "Require two-factor authentication and disallow bypass 2fa tokens". The workflow stages through GitHub's OIDC identity (`id-token: write`), so there is no npm token and no `NPM_TOKEN` secret, and nothing the workflow does can publish without a maintainer's 2FA.
 - `main` is protected and the CI checks are required.
 
 ## Checklist
@@ -26,23 +26,31 @@ The package is published to npm as `@ehtb/agent-ui` from a tag on `main`. The wo
    git tag -a vX.Y.Z -m "agent-ui X.Y.Z"
    git push origin vX.Y.Z
    ```
-6. The `Release` workflow checks the tag, runs the tests and publishes with `--access public --provenance`.
-7. Verify:
+6. The `Release` workflow checks the tag, runs the tests and stages the release with `npm stage publish --access public --provenance`. Nothing is public yet.
+7. Inspect and approve the staged release (a maintainer, with 2FA; needs npm 11.15.0 or newer):
+   ```bash
+   npm stage list @ehtb/agent-ui
+   npm stage download <stage-id>     # unpack it: check package.json (the "bin" entry), the files and the version
+   npm stage approve <stage-id>      # prompts for 2FA and publishes
+   ```
+   `npm stage reject <stage-id>` removes a staged version that is wrong; a version that is staged cannot be staged or published again until it is approved or rejected.
+8. Verify:
    ```bash
    npm view @ehtb/agent-ui version
    npx @ehtb/agent-ui --version
    ```
    Install it in an empty project, run `agent-ui check` and `agent-ui build`, and open the npm page to confirm the README, repository and license links.
+9. The documentation site (`gh-pages`) updates itself: the workflow `.github/workflows/site.yml` rebuilds it from `main` on every push, so the release commit of step 4 already puts the new version on it (pages, search index and sitemap are generated from `README.md`, `docs/*.md`, `CHANGELOG.md`, `examples/README.md` and the cookbook, and the version is stamped into the branch's `source/` copy). Check that the `Site` run of that commit succeeded and that https://ehtb.github.io/agent-ui/ shows `X.Y.Z`. The `source/` copy depends on `^X.Y.Z` of the package, which installs once the staged release is approved. If a run failed, fix it and push, or start the workflow by hand.
 
 ## If the workflow cannot publish
 
-Run the same commands from a clean checkout of the tag:
+Run the same commands from a clean checkout of the tag, logged in to npm (`npm login`) with 2FA:
 
 ```bash
-npm publish --access public --provenance
+npm publish --access public
 ```
 
-`prepublishOnly` runs the framework tests first. Do not publish from a dirty tree.
+Provenance only works from a supported CI, so there is no `--provenance` here. `prepublishOnly` runs the framework tests first. Do not publish from a dirty tree.
 
 ## Versioning
 
