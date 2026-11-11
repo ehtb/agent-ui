@@ -66,7 +66,8 @@ const post = async (path, body, kind = 'json') => {
   const text = await response.text();
   return { status: response.status, text, json: response.headers.get('content-type')?.includes('json') ? JSON.parse(text) : null };
 };
-const markup = (html) => html.slice(html.indexOf('<!--ssr:start-->'), html.indexOf('<!--ssr:end-->'));
+// The server separates adjacent text parts with <!--|--> so the browser can take them over; the assertions read the text without them.
+const markup = (html) => html.slice(html.indexOf('<!--ssr:start-->'), html.indexOf('<!--ssr:end-->')).replaceAll('<!--|-->', '');
 const embeddedState = (html) => JSON.parse(html.match(/<script type="application\/json" id="agent-ui-state"[^>]*>([\s\S]*?)<\/script>/)[1]);
 const validPerson = (overrides = {}) => ({ name: 'Ada Lovelace', email: 'ada@example.com', tickets: 1, ticketType: 'standard', newsletter: false, notes: '', ...overrides });
 

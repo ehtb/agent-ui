@@ -47,10 +47,12 @@ export const launchBrowser = async () => {
   if (!executable) return null;
   const cleanups = [];
   const profile = mkdtempSync(join(tmpdir(), 'agent-ui-chrome-'));
-  const child = spawn(executable, ['--remote-debugging-port=0', `--user-data-dir=${profile}`, '--headless=new', '--no-first-run', '--disable-gpu', 'about:blank'], { stdio: 'ignore' });
+  // A CI runner (Ubuntu with unprivileged user namespaces restricted) cannot start Chrome's sandbox; the runner is the sandbox there.
+  const sandboxArguments = process.env.CI ? ['--no-sandbox'] : [];
+  const child = spawn(executable, ['--remote-debugging-port=0', `--user-data-dir=${profile}`, '--headless=new', '--no-first-run', '--disable-gpu', ...sandboxArguments, 'about:blank'], { stdio: 'ignore' });
   cleanups.push(async () => {
     child.kill();
-    await new Promise((resolve) => (child.exitCode !== null ? resolve() : child.once('exit', resolve)));
+    await new Promise((resolve) => (child.exitCode !== null || child.signalCode !== null ? resolve() : child.once('exit', resolve)));
     rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
   let port;
