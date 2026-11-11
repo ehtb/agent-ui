@@ -2,7 +2,7 @@
 
 The project follows [semantic versioning](https://semver.org/) from 1.0.0. Until then a minor version (0.x.0) may change the grammar, an API or a message, and the entry says how to move. What counts as the public surface is in `README.md`, "Browser Support, Stability & Maturity".
 
-## Unreleased
+## 0.5.0 - 2026-11-11
 
 ### Added
 
