@@ -94,7 +94,7 @@ export const topics = [
       'Nested: each(item(\'lines\'), \'id\', li(...)) inside a row; item(...) is the innermost row.',
       'To read the outer row from the inner template, name it: each(\'orders.list\', \'id\', ..., { as: \'order\' }) and write row(\'order.id\') inside.',
     ].join('\n'),
-    example: "ul(null, each('orders.list', 'id', li(null, each(item('lines'), 'id', li(null, join(row('order.customer'), ': ', item('sku')), button({ 'aria-label': 'Remove', on: { click: act('orders.drop', { orderId: row('order.id'), lineId: item('id') }) } }, 'x')))), { as: 'order' }))",
+    example: "ul(null, each('orders.list', 'id', li(null, ul(null, each(item('lines'), 'id', li(null, join(row('order.customer'), ': ', item('sku')), button({ 'aria-label': 'Remove', on: { click: act('orders.drop', { orderId: row('order.id'), lineId: item('id') }) } }, 'x'))))), { as: 'order' }))",
     namespaces: { orders },
     see: 'docs/API.md, "each"; recipes list-edit and nested-rows',
   },

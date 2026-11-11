@@ -30,6 +30,8 @@ export interface ShellPluginEnvironment {
   basePath?: string;
   isServerRendering?: boolean;
   serverRendered?: boolean;
+  /** True for the first start of a server-rendered document: the shell takes over the server's markup (a shell that reads from its page does so without reporting differences). */
+  adopt?: boolean;
   initialState?: Record<string, Record<string, any>>;
 }
 export interface Shell {

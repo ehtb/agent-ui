@@ -179,6 +179,29 @@ const publicStateFor = async (state, stateForBrowser, request) => {
   return projected;
 };
 
+// What a browser's first render would write for a page: the page made from `state` (the state the document carries, `browserState` of a
+// result), nothing fetched, nothing waited for, and its markup read at once, before anything the page's plugins start can change it. A
+// browser that takes over the server's markup (src/adopt.js) is given exactly this; `agent-ui check` compares it with the server's markup, and
+// with itself under another clock, random numbers, time zone and locale. Returns the markup of the page, without its shell.
+export const renderFirstPass = (create, { url = '/', state, createShell = null, dev = true, basePath = '' }) => {
+  const root = createServerDocument().createElement('div');
+  root.setAttribute('id', createShell ? SHELL_ELEMENT_ID : APP_ELEMENT_ID);
+  // `isServerRendering: true` on purpose: the first pass runs in Node, against the server window, and a plugin that needs a browser (a timer, a
+  // library that touches `window`) returns early when it is true. What such a plugin writes into the page in a browser is therefore not part of
+  // this markup and is not compared; a plugin that draws into an element owns that element's content (mountElement), not the spec's markup.
+  const environment = { win: createServerWindow(withBase(basePath, url)), fetchFunction: () => new Promise(() => {}), dev, debug: false, isServerRendering: true, serverRendered: false, basePath };
+  let shellApp = null;
+  let ui = null;
+  try {
+    shellApp = createShell ? createShell({ ...environment, root }) : null;
+    const pageRoot = shellApp ? root.findById(APP_ELEMENT_ID) : root;
+    ui = create({ ...environment, root: pageRoot, initialState: state, shell: shellApp });
+    return serialize(pageRoot);
+  } finally {
+    destroyApps(ui, shellApp);
+  }
+};
+
 const RENDER_PAGE_OPTIONS = ['url', 'fetchFunction', 'timeoutMs', 'dev', 'initialState', 'createShell', 'request', 'stateForBrowser', 'signal', 'basePath'];
 
 export const renderPage = async (create, options = {}) => {
@@ -233,7 +256,11 @@ export const renderPage = async (create, options = {}) => {
     const stateForDocument = await publicStateFor(state, stateForBrowser, request);
     // The hook may await the network: a visitor who left during it must not get a result from an app that is already destroyed.
     if (abortSignal?.aborted) throw renderAbortedError();
-    return { html: serialize(root), state, stateScript: stateScriptHtml(stateForDocument), ui, shell: Boolean(shellApp), shellApp, timedOut, basePath };
+    const result = { html: serialize(root), state, browserState: stateForDocument, stateScript: stateScriptHtml(stateForDocument), ui, shell: Boolean(shellApp), shellApp, timedOut, basePath };
+    // The markup of the page alone, without its shell, written when it is asked for (`agent-ui check` compares it with what a browser would render
+    // from `browserState`). Not enumerable, so a copy of the result does not write the markup, and only while the apps are not destroyed.
+    Object.defineProperty(result, 'pageHtml', { get: () => (shellApp ? serialize(pageRoot) : result.html), enumerable: false });
+    return result;
   } catch (error) {
     // Nothing is handed back, so nobody else can end the apps that were started.
     // The render's own failure is what the caller needs; a cleanup that also throws must not replace it.

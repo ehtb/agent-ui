@@ -168,6 +168,7 @@ export const definePage = (page, { path, view, layout, pending, spec, shell: she
       root,
       dev,
       basePath,
+      adopt: environment.adopt === true, // only the first start of a document that the server rendered (startPage): the markup is taken over, not built again
       debug: environment.debug ?? page.debug, // the server says false; a browser says nothing, and the page decides
       plugins: [...pagePlugins.map((plugin, index) => installPagePlugin(plugin, index, environment)), keepTitleCurrent(win)],
       // The spec and namespaces of a page never change, so production checks them once. A caller's initial state is checked every time.
@@ -229,7 +230,10 @@ export const startPage = (page, { url, dev, basePath = '', ...options }) => {
   exposeHot({ entries, getCurrent: () => current }); // `agent-ui dev` swaps the running page for an edited one (src/hot.js); a production build has a stub there
   if (url) entries.set(url, entry);
   if (current) return entry; // a soft navigation imported this entry; it starts the page itself (src/navigation.js)
-  const environment = browserEnvironment({ dev, basePath });
+  // The document's first page starts on the markup the server rendered (a state script says it did): the browser takes those nodes over
+  // (src/adopt.js). A soft navigation and a hot swap start into an element that holds nothing of the server's, and do not.
+  const environment = { ...browserEnvironment({ dev, basePath }) };
+  environment.adopt = environment.serverRendered;
   current = { ...(page.shell ? page.shell.start(entry, environment) : { entry, ui: entry.mount(environment), shellApp: null, slot: environment.root }), dev, basePath };
   return entry;
 };

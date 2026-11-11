@@ -197,7 +197,7 @@ test('the server renders the shell with the page inside it, from the page\'s sta
   const definition = define(makeShell());
   const result = await renderPage(definition.create, { dev: false, url: '/product/3', createShell: definition.createShell });
   assert.equal(result.shell, true);
-  assert.match(result.html, /<main data-id="frame-root"><header data-id="frame-header">.*<span data-id="badge">Cart 5 on \/product\/3<\/span>.*<div data-id="page-slot" id="app"><section data-id="page-view">5<\/section><\/div><footer data-id="frame-footer">Footer<\/footer><\/main>/);
+  assert.match(result.html, /<main data-id="frame-root"><header data-id="frame-header">.*<span data-id="badge">Cart <!--\|-->5<!--\|--> on <!--\|-->\/product\/3<\/span>.*<div data-id="page-slot" id="app"><section data-id="page-view">5<\/section><\/div><footer data-id="frame-footer">Footer<\/footer><\/main>/);
   assert.deepEqual(result.state.cart.lines.length, 2, 'the state carried to the browser is the page\'s');
   const template = '<body>\n<div id="app"></div>\n<script type="module" src="/assets/index.js"></script>\n</body>';
   const document = renderDocument(template, result);

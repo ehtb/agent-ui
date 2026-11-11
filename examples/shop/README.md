@@ -14,16 +14,16 @@ Run it with `npm run example -- shop` (builds, then serves with `agent-ui serve`
 
 ## The numbers
 
-`test/examples/examples.test.mjs` builds this example and fails when the Size and Gzip columns of the first table below drift from the build. The esbuild columns, the two download tables, the journey line and the module sizes under "Inside the chunks" were re-measured in November 2026 (with the framework's code in a chunk of its own) and are not checked; the comparison with the commit before the shell is an older measurement. Re-measure them when a figure matters.
+`test/examples/examples.test.mjs` builds this example and fails when the Size and Gzip columns of the first table below drift from the build. The esbuild columns, the journey line and the comparison below were re-measured in November 2026 (with the framework's code in a chunk of its own) and are not checked, so they do not include the code that takes over the server's markup (`src/adopt.js`, about 7.6 KB of source in the `agent-ui` chunk); the Size and Gzip columns of the two download tables and the module sizes under "Inside the chunks" were updated for it; the comparison with the commit before the shell is an older measurement. Re-measure them when a figure matters.
 
 Production build (`agent-ui build`, validator and checks left out), in bytes. Every number is what the browser downloads for one file; "gzip" is gzip level 9 of that file ("How to read the numbers" has the exact method).
 
 | Chunk                                | Contains                                                                                                                                                                                                                  |            Size |            Gzip |         esbuild |  esbuild + gzip |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------: | --------------: | --------------: | --------------: |
-| `agent-ui`                           | the core runtime, every page                                                                                                                                                                                              |          48,897 |          13,339 |          25,119 |          10,244 |
-| `agent-ui-checkout-index-product-id` | the framework code the pages share: the page code, the head code (the navigation plugin copies the head of the next page, and the product page's `withHead` uses it too), resources, URL patterns and the shell code (`shell.js`, `syncApps`, the navigation plugin) |          47,128 |          13,292 |          26,279 |          10,654 |
-| `shared-checkout-index-product-id`   | the shop's own shared code: the cart, the catalog, the plugins and the shell's behavior (behavior only), the shell's content as data, and the shared stylesheet                                                            |           4,655 |           1,316 |           3,389 |           1,141 |
-| `index`                              | the list page's behavior and its finished spec                                                                                                                                                                            |           2,691 |           1,091 |           1,985 |             956 |
+| `agent-ui`                           | the core runtime, every page                                                                                                                                                                                              |          54,050 |          14,626 |          25,119 |          10,244 |
+| `agent-ui-checkout-index-product-id` | the framework code the pages share: the page code, the head code (the navigation plugin copies the head of the next page, and the product page's `withHead` uses it too), resources, URL patterns and the shell code (`shell.js`, `syncApps`, the navigation plugin) |          47,549 |          13,408 |          26,279 |          10,654 |
+| `shared-checkout-index-product-id`   | the shop's own shared code: the cart, the catalog, the plugins and the shell's behavior (behavior only), the shell's content as data, and the shared stylesheet                                                            |           4,655 |           1,317 |           3,389 |           1,141 |
+| `index`                              | the list page's behavior and its finished spec                                                                                                                                                                            |           2,691 |           1,090 |           1,985 |             956 |
 | `product-id`                         | the product page's behavior and its finished spec                                                                                                                                                                         |           3,693 |           1,301 |           2,694 |           1,105 |
 | `checkout`                           | the checkout page's behavior, its rules and its finished spec                                                                                                                                                             |           6,260 |           1,975 |           4,836 |           1,757 |
 | `devtools`                           | the debug console (it writes to the browser console, no stylesheet), fetched only by an app made with `debug: true`                                                                                                       |           2,190 |             889 |           1,371 |             713 |
@@ -31,10 +31,10 @@ Production build (`agent-ui build`, validator and checks left out), in bytes. Ev
 
 | What a visitor downloads (JavaScript) |    Size |   Gzip | esbuild | esbuild + gzip |
 | ------------------------------------- | ------: | -----: | ------: | -------------: |
-| the list page                         | 103,371 | 29,038 |  56,772 |         22,995 |
-| the product page                      | 107,064 | 30,339 |  57,481 |         23,144 |
-| the checkout page                     | 109,631 | 31,013 |  59,623 |         23,796 |
-| all three pages as one bundle         | 113,324 | 32,314 |  64,302 |         25,857 |
+| the list page                         | 108,945 | 30,441 |  56,772 |         22,995 |
+| the product page                      | 112,647 | 31,740 |  57,481 |         23,144 |
+| the checkout page                     | 115,214 | 32,414 |  59,623 |         23,796 |
+| all three pages as one bundle         | 118,907 | 33,715 |  64,302 |         25,857 |
 
 **Why the framework's code and the shop's are two files.** They change at different times: the framework when you upgrade it, the shop's code on every deploy. In one file, a one-line change to `shared/cart.js` would make every returning visitor download the 10.7 KB (esbuild + gzip) of framework code again; as two files, they download the 1.1 KB of the shop's shared code and keep the rest. The price is one request more on the first visit, fetched in parallel with the others (`modulepreload`).
 
@@ -44,8 +44,8 @@ Downloaded once means one file with the same URL on every page: the browser fetc
 
 |                                  | Files                                          |   Size |   Gzip | esbuild | esbuild + gzip |
 | -------------------------------- | ---------------------------------------------- | -----: | -----: | ------: | -------------: |
-| **Downloaded once** (every page) | `agent-ui` + `agent-ui-checkout-index-product-id` + the shared chunk + its stylesheet | 101,395 | 28,333 |  55,468 |         22,413 |
-| **Only the list page**           | `index` + `index.css`                          |  2,944 |  1,272 |   2,222 |          1,133 |
+| **Downloaded once** (every page) | `agent-ui` + `agent-ui-checkout-index-product-id` + the shared chunk + its stylesheet | 106,969 | 29,737 |  55,468 |         22,413 |
+| **Only the list page**           | `index` + `index.css`                          |  2,944 |  1,271 |   2,222 |          1,133 |
 | **Only the product page**        | `product-id`                                   |  3,693 |  1,301 |   2,694 |          1,105 |
 | **Only the checkout page**       | `checkout` + `checkout.css`                    |  6,465 |  2,134 |   5,032 |          1,913 |
 
@@ -57,8 +57,8 @@ The manifest (`dist/manifest.json`) lists the size of every module in `moduleSiz
 
 | Chunk                      | Biggest modules                                                                                                                                                                                                                                                                     |
 | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent-ui` (83,691 in all) | `ui.js` 66,257, `namespaces.js` 5,270, `spec-core.js` 5,403, `messages.js` 2,327, `base-path.js` 2,216                                                                                                                                                                                                    |
-| `agent-ui-checkout-index-product-id` (90,907 in all) | `resources.js` 20,230, `navigation.js` 16,931, `pages.js` 14,552, `head.js` 12,570, `shell.js` 8,206, `url-pattern.js` 5,433, `head-reader.js` 4,052, `hydrate.js` 2,511, `sync-apps.js` 2,225 and `document-markup-reader.js` 2,093 |
+| `agent-ui` (95,520 in all) | `ui.js` 70,066, `adopt.js` 7,584, `spec-core.js` 5,763, `namespaces.js` 5,270, `messages.js` 2,327, `base-path.js` 2,216                                                                                                                                                                                                    |
+| `agent-ui-checkout-index-product-id` (92,738 in all) | `resources.js` 20,230, `navigation.js` 16,981, `pages.js` 15,160, `head.js` 12,622, `shell.js` 9,473, `url-pattern.js` 5,804, `head-reader.js` 4,052, `hydrate.js` 2,778, `sync-apps.js` 2,225 and `document-markup-reader.js` 2,093 |
 | shared (5,993 in all)      | the shop's own `cart.js` 2,642, `catalog.js` 1,238, the shell's content as data (`shells/main.js`) 954, `shell.js` 802, `plugins.js` 160 |
 | `checkout` (6,816)         | its finished spec `spec.js` 3,173 (data), `checkout/page.js` 2,606, `checkout/rules.js` 677                                                                                                                                                                                         |
 | `index` (2,547)            | its finished spec `spec.js` 1,315 (data), `pages/page.js` 875                                                                                                                                                                                                                       |

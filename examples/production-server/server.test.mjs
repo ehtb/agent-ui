@@ -58,7 +58,7 @@ test('a page is rendered for its URL, plain, with the security and cache headers
   assert.match(body, /<!--ssr:start-->/);
   assert.match(body, /<title>Production server<\/title>/);
   assert.match(body, /Server-rendered: waiting for JavaScript\./);
-  assert.match(body, /0 of 6 checks done/);
+  assert.match(body, /0<!--\|--> of <!--\|-->6<!--\|--> checks done/);
   assert.match(body, /Render every page for its own URL/);
   const csp = response.headers.get('content-security-policy');
   assert.match(csp, /default-src 'self'/);

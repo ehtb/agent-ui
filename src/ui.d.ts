@@ -202,6 +202,12 @@ export interface AppOptions {
   basePath?: string;
   /** The caller checks this same spec and namespaces before (a server makes one app per request): skip walking an unchanged spec again. */
   specChecked?: boolean;
+  /**
+   * The root holds the markup a server rendered for this spec and state (docs/API.md, "Taking over server markup"): the first render takes those nodes
+   * instead of making new ones, and makes again only the ones that differ, which it reports (AUI0305). `'quiet'` takes over the same way and does not
+   * report: for a shell that is told what its page shows after it started. Default false.
+   */
+  adopt?: boolean | 'quiet';
 }
 
 export function app(options: AppOptions): AppApi;

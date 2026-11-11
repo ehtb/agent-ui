@@ -13,6 +13,8 @@ export interface CreateEnvironment {
   shell?: AppApi | null;
   /** True when the app started from state a server wrote: false while rendering on the server. */
   serverRendered?: boolean;
+  /** True when the app takes over the markup a server wrote instead of building it again (the first start of a server-rendered document); never set on the server. */
+  adopt?: boolean;
   /** The path the site is served below ('' for the root). */
   basePath?: string;
 }
@@ -33,7 +35,25 @@ export function renderPage(
     /** The path the site is served below, for example '/shop': `url` is the site's own path; the page's root-absolute URLs carry the base. Default ''. */
     basePath?: string;
   },
-): Promise<{ html: string; state: Record<string, unknown>; stateScript: string; ui: AppApi; shell: boolean; shellApp: AppApi | null; timedOut: boolean; basePath: string }>;
+): Promise<{
+  html: string;
+  state: Record<string, unknown>;
+  /** The state a browser receives: `state` after `stateForBrowser`. */
+  browserState: Record<string, unknown>;
+  stateScript: string;
+  ui: AppApi;
+  shell: boolean;
+  shellApp: AppApi | null;
+  timedOut: boolean;
+  basePath: string;
+  /** The markup of the page alone, without its shell. Not enumerable, and empty once the apps are destroyed. */
+  readonly pageHtml: string;
+}>;
+/** The markup a browser's first render would write for the page, made from `state` (the `browserState` of a render), with nothing fetched. */
+export function renderFirstPass(
+  create: (environment: CreateEnvironment) => AppApi,
+  options: { url?: string; state: Record<string, any>; createShell?: ((environment: Omit<CreateEnvironment, 'initialState' | 'shell'>) => AppApi) | null; dev?: boolean; basePath?: string },
+): string;
 /** Used when no fetchFunction is given: absolute http(s) URLs go to the real fetch, a relative URL fails with the fix. */
 export const defaultFetchFunction: CreateEnvironment['fetchFunction'];
 export function createServerWindow(url?: string): any;

@@ -113,7 +113,7 @@ test('an installed copy builds with the agent-ui command: imports by package nam
     assert.deepEqual(Object.keys(output.pages).sort(), ['about', 'index']); // the page "/" is index.html
     assert.equal('rewrites' in output, false, 'the manifest holds no rewrite rules: a server always runs and renders the URLs itself');
     // The runtime (and, in production, the validator's primitives) sit in one shared chunk named agent-ui, loaded by both pages.
-    assert.deepEqual(output.chunks['agent-ui'].modules.map((path) => path.split('/').slice(-3).join('/')).sort(), ['agent-ui/src/base-path.js', 'agent-ui/src/error-messages.js', 'agent-ui/src/errors.js', 'agent-ui/src/messages.js', 'agent-ui/src/namespaces.js', 'agent-ui/src/runtime-checks.js', 'agent-ui/src/spec-core.js', 'agent-ui/src/ui.js', 'agent-ui/src/validate.js']);
+    assert.deepEqual(output.chunks['agent-ui'].modules.map((path) => path.split('/').slice(-3).join('/')).sort(), ['agent-ui/src/adopt.js', 'agent-ui/src/base-path.js', 'agent-ui/src/error-messages.js', 'agent-ui/src/errors.js', 'agent-ui/src/messages.js', 'agent-ui/src/namespaces.js', 'agent-ui/src/runtime-checks.js', 'agent-ui/src/spec-core.js', 'agent-ui/src/ui.js', 'agent-ui/src/validate.js']);
     assert.ok(output.pages.index.chunksLoadedAtStartup.includes('agent-ui') && output.pages.about.chunksLoadedAtStartup.includes('agent-ui'));
     assert.ok(output.chunks.devtools && !output.chunks.devtools.loadsEagerly); // import('@ehtb/agent-ui/devtools') is a lazy chunk
     assert.match(readFileSync(join(project.root, 'dist', output.chunks['agent-ui'].javascript), 'utf8'), /validate = \(\) => \[\]/); // the stub: validator omitted

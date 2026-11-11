@@ -82,6 +82,8 @@ export interface PagePluginEnvironment {
   isServerRendering: boolean;
   /** True when the browser started from markup and state a server wrote. */
   serverRendered?: boolean;
+  /** True for the first start of a server-rendered document: the page takes over the markup the server wrote instead of building it again. */
+  adopt?: boolean;
   initialState?: StateSnapshot;
   debug?: boolean;
   page: { path: string; head: PageHead };
@@ -95,6 +97,8 @@ export interface PageEnvironment {
   basePath?: string;
   isServerRendering?: boolean;
   serverRendered?: boolean;
+  /** True for the first start of a server-rendered document: the page takes over the markup the server wrote instead of building it again. */
+  adopt?: boolean;
   initialState?: StateSnapshot;
   debug?: boolean;
   shell?: any;

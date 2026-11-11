@@ -71,6 +71,51 @@ for (const dev of [true, false]) {
   });
 }
 
+for (const dev of [true, false]) {
+  test(`dev: ${dev}: a page that takes over server markup reports a difference once, and the markup that matches is taken over without a word`, async () => {
+    const { parseHtml, createRoot, mutations } = await import('./support/dom-shim.mjs');
+    const { createServerDocument, serialize } = await import('../src/server-dom.js');
+    const { app } = await import('../src/ui.js');
+    const specification = div(null, when(state('page.open'), ul(null, li(null, 'open')), ul(null, li(null, 'closed'))));
+    const markupFor = async (open) => {
+      const serverRoot = createServerDocument().createElement('div');
+      const server = app({ namespaces: page([]), spec: specification, initialState: { page: { open } }, root: serverRoot, dev });
+      await server.settle();
+      const html = serialize(serverRoot);
+      server.destroy();
+      return html;
+    };
+    await quietly(async () => {
+      const root = parseHtml(await markupFor(true), createRoot());
+      const same = app({ namespaces: page([]), spec: specification, initialState: { page: { open: true } }, root, dev, adopt: true });
+      await same.settle();
+      assert.deepEqual(same.errors, [], 'the markup the server wrote is taken over without a word');
+      same.destroy();
+
+      const differing = parseHtml(await markupFor(true), createRoot());
+      const reports = [];
+      const writes = mutations.count;
+      const ui = app({ namespaces: page([]), spec: specification, initialState: { page: { open: false } }, root: differing, dev, adopt: true, plugins: [(api) => api.onError((report) => reports.push(report))] });
+      await ui.settle();
+      assert.ok(mutations.count > writes, 'the nodes that differ were made again');
+      assert.equal(findElements(differing, (element) => element.localName === 'li')[0].textContent, 'closed');
+      assert.equal(reports.length, 1);
+      assert.equal(reports[0].code, 'AUI0305');
+      assert.deepEqual(Object.keys(reports[0].details).sort(), ['created', 'first', 'removed']);
+      // The real module words the difference in both modes (a production build swaps it for the stub, which answers null: the next test).
+      assert.match(reports[0].message, /^the first render differs from the markup the server wrote: \d+ nodes? made again, \d+ removed\. First difference: expected <ul data-id="0\.0\.otherwise\.0"> in <div data-id="0">, found <ul data-id="0\.0\.when\.0">\./);
+    });
+  });
+}
+
+test('a production build reports the counts alone as a code with details, and decodeError turns them back into the sentence', async () => {
+  const { decodeError } = await import('../src/error-messages.js');
+  const production = 'AUI0305 {"created":4,"removed":2,"first":null}';
+  assert.match(decodeError(production).text, /^the first render differs from the markup the server wrote: 4 nodes made again, 2 removed\. The page works, but those nodes were not taken over\. Run `agent-ui check`/);
+  assert.match(decodeError('AUI0305 {"created":1,"removed":0,"first":null}').text, /: 1 node made again, 0 removed\./);
+  assert.match(decodeError('AUI0305 {"created":0,"removed":0,"first":"boom","restarted":true}').text, /could not be taken over \(boom\), so the page was rendered again from nothing/);
+});
+
 test('the stub that production builds use exports exactly what the module does, and does nothing', () => {
   assert.deepEqual(Object.keys(stub).sort(), Object.keys(checks).sort());
   assert.equal(stub.consumeCheckedListProblem(new Map([['0|AUI0303|a|0|1', 1]]), 'AUI0303', { path: '0', value: 'a', first: 0, second: 1 }), false);

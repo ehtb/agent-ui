@@ -15,6 +15,11 @@
 // import or export in the project's own files, an import that does not resolve and an import cycle are reported with the file and
 // line, as `agent-ui build` and `agent-ui dev` would refuse them.
 //
+// Every page it renders is also compared with the page a browser would make from the state the document carries (cli/hydration-check.mjs): a
+// browser takes over the server's markup, and where it differs (a state key left out of the document, a derived value that depends on the
+// time, random numbers, the time zone or the locale) it makes those nodes again. Markup that a browser's HTML parser rewrites (a `tr` in a
+// `table`, a `div` in a `p`) is found by the validator when the spec is read, so it is reported here as a spec problem.
+//
 // Every page it renders is measured, and the numbers are printed so an agent has a sense of what a page costs: the elements it renders
 // (page and shell), the rows of its largest list (the framework renders every row: there is no virtualization), and the bytes of
 // the state the document carries. `budgets` of the config (stateBytes, elements, listRows) turn a page over a limit into a problem.
@@ -25,6 +30,7 @@ import { loadConfig } from '../build/config.mjs';
 import { buildModuleGraph } from '../build/module-graph.mjs';
 import { defaultFetchFunction, destroyApps, renderPage } from '../server/render-page.js';
 import { createApiFor } from '../server/ssr-handler.mjs';
+import { findHydrationProblems } from './hydration-check.mjs';
 import { didYouMean } from '../src/messages.js';
 import { compileUrlPattern, sortBySpecificity, withoutTrailingSlash } from '../src/url-pattern.js';
 import { toArray } from '../src/spec-core.js';
@@ -271,6 +277,8 @@ export const checkProject = async ({ config, root = process.cwd() }) => {
         } catch (error) {
           outcome.problems.push(`${where}: ${error.message}`);
         }
+        // Whether a browser that takes over the server's markup finds the page it would make itself (cli/hydration-check.mjs). Before the apps are destroyed: it reads their markup.
+        outcome.problems.push(...findHydrationProblems({ create: job.module.create, createShell: job.module.createShell, url: job.url, result, basePath: config.basePath ?? '', where }));
       } finally {
         destroyApps(result.ui, result.shellApp);
       }

@@ -5,10 +5,13 @@
 // and the app's create(env) spreads it over its defaults: state: { ...state, ...env.initialState }.
 
 import { withBase } from './base-path.js';
+import { APP_ELEMENT_ID as appElementId } from './spec-core.js';
 
-// The two element ids every side of server rendering agrees on: the mount point of the app, and the script that carries
-// the server's state to the browser. Defined here once; the renderer (server/), the document builder and the build use these.
-export const APP_ELEMENT_ID = 'app';
+// The element ids every side of server rendering agrees on: the mount point of the app, and the script that carries the server's state to
+// the browser. The renderer (server/), the document builder and the build use these. The id of the mount point is written once, in
+// src/spec-core.js, because the runtime needs it too (the slot of a shell keeps what the page's markup holds when an app takes over server
+// markup), and a core module cannot import this one without making a cycle between the chunks.
+export const APP_ELEMENT_ID = appElementId;
 // The mount point of a shell (src/shell.js), for a page that has one. The page's own mount point, APP_ELEMENT_ID, is then inside it:
 // the shell's spec holds it as an element, and the page app renders into that element.
 export const SHELL_ELEMENT_ID = 'shell';

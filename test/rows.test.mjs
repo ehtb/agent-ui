@@ -12,7 +12,7 @@ const orders = {
   actions: { removeLine: { args: { orderId: 'number', lineId: 'number' }, run: (store, { orderId, lineId }) => store.set('removed', [...store.get('removed'), `${orderId}/${lineId}`]) } },
 };
 const nestedSpec = (innerTemplate) =>
-  ul({ id: 'orders' }, each('orders.list', 'id', li({ id: 'order' }, each(item('lines'), 'id', innerTemplate)), { as: 'order' }));
+  ul({ id: 'orders' }, each('orders.list', 'id', li({ id: 'order' }, ul({ id: 'lines' }, each(item('lines'), 'id', innerTemplate))), { as: 'order' }));
 const byId = (root, id) => findElements(root, (element) => element.dataset.id === id);
 const texts = (root, id) => byId(root, id).map((element) => element.textContent);
 
@@ -60,7 +60,7 @@ test('row(): mistakes are reported with the place, the names in scope and the fi
   assert.match(problemsOf(div(null, span(null, row('order.id'))))[0], /row binding outside each\./);
   assert.match(problemsOf(nestedSpec(span(null, row('ordr.id'))))[0], /no enclosing each says as: "ordr"\. Did you mean "order"\? Names in scope: order/);
   assert.match(problemsOf(ul(null, each('orders.list', 'id', li(null, span(null, row('order.id'))))))[0], /no enclosing each says as: "order"\. No enclosing each has an as\. Write each\(source, key, template, \{ as: "name" \}\) on the outer each/);
-  assert.match(problemsOf(ul(null, each('orders.list', 'id', li(null, each(item('lines'), 'id', li(null, 'x'), { as: 'order' })), { as: 'order' })))[0], /as: "order" is already the name of an enclosing each, and a row would hide it\. Give this each another name/);
+  assert.match(problemsOf(ul(null, each('orders.list', 'id', li(null, ul(null, each(item('lines'), 'id', li(null, 'x'), { as: 'order' }))), { as: 'order' })))[0], /as: "order" is already the name of an enclosing each, and a row would hide it\. Give this each another name/);
   assert.match(problemsOf({ tag: 'ul', children: { each: 'orders.list', key: 'id', as: 'Bad name', template: { tag: 'li', children: 'x' } } })[0], /as is "Bad name"\. Write a name in letters and digits starting with a lowercase letter/);
   assert.match(problemsOf({ tag: 'ul', children: { each: 'orders.list', key: 'id', ass: 'order', template: { tag: 'li', children: 'x' } } })[0], /unknown key ass .*Did you mean "as"\?/);
   assert.deepEqual(problemsOf(nestedSpec(span(null, row('order.customer')))), []);

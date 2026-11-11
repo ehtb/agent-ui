@@ -7,6 +7,10 @@ export const BINDING_KEYS = ['state', 'item', 'row', 'rowState', 'not', 'length'
 // delegation cannot use them. `{event: "pointerType"}` reads which kind of pointer it was.
 export const DELEGATED_EVENTS = ['click', 'dblclick', 'pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'pointerover', 'pointerout', 'input', 'change', 'keydown', 'keyup', 'focusin', 'focusout', 'submit'];
 export const KEY_EVENTS = ['keydown', 'keyup'];
+// The HTML id of the element an app mounts in (src/hydrate.js exports it for server rendering; the runtime reads it to know the slot of a shell).
+export const APP_ELEMENT_ID = 'app';
+// The data of the comment a server writes between two neighbouring texts (src/server-dom.js), so each text of a spec has a node of its own in the markup.
+export const TEXT_SEPARATOR = '|';
 export const URL_PROPS = ['href', 'src', 'action', 'formaction'];
 // SVG for icons and simple drawings: a closed set of tags the runtime makes in the SVG namespace (src/ui.js). The grammar's rules for
 // them (where they may stand, which attributes they take) are in src/grammar.js and src/validate.js.

@@ -28,7 +28,7 @@ test('the host page holds both islands, rendered on the server, each with the st
   const page = await get('/');
   assert.equal(page.status, 200);
   assert.match(page.text, /<div id="catalog-island"><section data-id="catalog" aria-label="Products">.*Sencha.*Assam.*Rooibos/s);
-  assert.match(page.text, /<div id="badge-island"><span data-id="badge" aria-live="polite">Cart: 0<\/span><\/div>/);
+  assert.match(page.text, /<div id="badge-island"><span data-id="badge" aria-live="polite">Cart: <!--\|-->0<\/span><\/div>/);
   assert.match(page.text, /<script type="application\/json" id="catalog-state">\{"catalog":\{"products":\[/);
   assert.match(page.text, /<script type="application\/json" id="badge-state">\{"badge":\{"count":0\}\}<\/script>/);
   assert.match(page.text, /<script type="importmap">\{"imports":\{"@ehtb\/agent-ui":"\/agent-ui\/src\/ui\.js"/);

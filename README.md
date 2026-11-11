@@ -11,7 +11,7 @@ Modern UI frameworks optimize for human ergonomics: implicit conventions, flexib
 
 `agent-ui` inverts this design. It gives agents a closed, declarative JSON grammar authored through typed JavaScript builders, paired with strict, transactional state namespaces. There is exactly one valid shape for every construct. If an agent makes a mistake, the runtime rejects it immediately with an error message that gives the exact syntax fix. And because the entire UI, state tree, and interactive surface are plain data, an agent can render, inspect, and test every page headlessly in Node in milliseconds.
 
-Strictness for the machine does not compromise the output for humans. Pages map to real URLs, render on the server, and mount in the browser with a 13 KB gzipped runtime, zero virtual DOM overhead, progressive enhancement for forms, and built-in accessibility checks.
+Strictness for the machine does not compromise the output for humans. Pages map to real URLs, render on the server, and mount in the browser with a 14 KB gzipped runtime, zero virtual DOM overhead, progressive enhancement for forms, and built-in accessibility checks.
 
 ---
 
@@ -94,7 +94,7 @@ $: unknown key chilren (allowed: tag, props, children, id, classes, on, transiti
 Design priorities, in strict order: performance, accuracy, size.
 
 - **No Virtual DOM:** One state binding compiles to one effect that writes to one DOM property. There is no VDOM diffing overhead. Toggling a row in a list costs exactly three DOM mutations at any list size.
-- **13 KB gzipped:** The production runtime is about 47 KB, 13 KB gzipped, with readable symbols—only comments and whitespace are stripped. A real minifier plugs into `transform`, and source maps (`sourceMaps`) work with or without it: the minifier's map is followed back to your files. Framework code, each npm package and your app's code are separate chunks, so a deploy of your app leaves the rest cached. See `docs/BUILD.md`.
+- **14 KB gzipped:** The production runtime is about 52 KB, 14 KB gzipped, with readable symbols—only comments and whitespace are stripped. A real minifier plugs into `transform`, and source maps (`sourceMaps`) work with or without it: the minifier's map is followed back to your files. Framework code, each npm package and your app's code are separate chunks, so a deploy of your app leaves the rest cached. See `docs/BUILD.md`.
 - **Declared List Shapes:** Lists declare their item schema up front. Typos in `{item}` bindings fail at mount, malformed writes fail in development, and a `validate` hook lets external validators like Zod verify items at runtime.
 
 ---
@@ -165,7 +165,7 @@ To keep the mental model small for agents and the runtime fast, several boundari
 - **Full List Derivation (No Virtualization):** Derived lists recompute in full when inputs change, and `{item}` bindings read the innermost loop (outer loops are aliased with `as` and read via `row('name.field')`). This performs well up to thousands of rows, but will bottleneck at tens of thousands.
 - **No Template Formatting Syntax:** Numbers, dates, and currencies are formatted in `derive` using standard `Intl` APIs and `memoizeItem`, keeping the view grammar closed.
 - **Synchronous, Serializable State:** State must be pure JSON (no `Date`, `Map`, or class instances). Actions are strictly synchronous; all async work happens in plugins.
-- **Destructive Hydration:** On mount, the client replaces the server-rendered DOM tree rather than adopting nodes. Pre-mount user input and focus state are preserved via `data-id`, but scroll offsets inside nested containers and running CSS animations reset on mount.
+- **Whole-page Hydration:** The browser takes over the server's DOM nodes instead of building them again, so a playing video, a scroll position and an animation survive; where a node differs from what the browser's own render makes (invalid nesting that a parser rewrites, a derived value that depends on the time, the time zone or the locale), that node is made again and `AUI0305` says so. `agent-ui check` finds both causes. There is no partial or streamed hydration: the page is taken over whole.
 - **Strict Bundler Dialect:** To keep the built-in bundler zero-dependency and fast, source files must use relative imports with file extensions, named exports only, no circular dependencies, and no `export *`. Third-party packages that violate this (e.g., `zod`, `Tiptap`) are imported via a pre-bundled vendor file (`docs/BUILD.md`).
 
 ---

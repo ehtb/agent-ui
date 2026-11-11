@@ -121,7 +121,7 @@ const pageContent = () =>
         feature('01', 'The UI is data', 'A page compiles to a JSON spec. The browser downloads the behavior and the finished spec, never the builders that assembled it.'),
         feature('02', 'State has one shape', 'Plain JSON in namespaces. Every write is an action, every action is logged, and a thrown error undoes the whole step.'),
         feature('03', 'Checks before guessing', 'Bindings, arguments, labels, list keys and URLs are validated on mount with a path and a fix. `agent-ui check` covers every page.'),
-        feature('04', 'Server first', 'Every page renders on the server with its real URL and state. Soft navigation and hydration take over without a client-side router.'),
+        feature('04', 'Server first', 'Every page renders on the server with its real URL and state. The browser takes over the markup the server wrote instead of building it again, and soft navigation replaces a page without a client-side router.'),
         feature('05', 'Small on purpose', 'No React, no build-time magic, no transitive dependencies. The grammar is closed, so there is one valid form of every part.'),
         feature('06', 'Written to be read', 'Readable names, no minification by the framework, and a cookbook of recipes that are tested on every run.'),
       ),

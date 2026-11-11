@@ -70,6 +70,13 @@ export const MESSAGES = {
     text: ({ value, path, key, source, first, second }) => `duplicate key ${value} in ${path}${source === undefined ? '' : ` (list "${source}", items ${first} and ${second})`}: the later item is not shown. The data holds two items with the same "${key}"${source === undefined ? '' : `; fix "${source}" so that every item has its own "${key}"`}`,
   },
   AUI0304: { title: 'an update of the page threw (a binding, or a derived value that is read by one), or an error without an AUI code was reported', text: ({ message }) => message },
+  AUI0305: {
+    title: 'the first render of a page that takes over server markup found a difference, and made the nodes that differ again',
+    text: ({ created, removed, first, restarted }) =>
+      restarted
+        ? `the markup the server wrote could not be taken over (${first}), so the page was rendered again from nothing. Run \`agent-ui check\`: it reports markup that a browser reads differently than the server wrote it, and values that are not the same for the same state`
+        : `the first render differs from the markup the server wrote: ${created} node${created === 1 ? '' : 's'} made again, ${removed} removed.${first ? ` First difference: ${first}.` : ''} The page works, but those nodes were not taken over. Run \`agent-ui check\`: it reports markup that a browser reads differently than the server wrote it (invalid nesting), and a derived value that is not the same for the same state (a time, a random number, a time zone or a locale)`,
+  },
 
   AUI0401: { title: 'a plugin that draws into an element (mountElement) threw in its mount or its cleanup', text: ({ where, id, phase, cause }) => `${where}: ${phase === 'cleanup' ? 'the cleanup of' : 'mount of'} "${id}" threw: ${cause}` },
 

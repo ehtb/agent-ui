@@ -4,7 +4,7 @@
 //
 //   const browser = await launchBrowser();                      // null when there is no Chrome: skip the test then
 //   const site = await serveSite({ projectRoot });              // builds the project and serves it with the render server
-//   const page = await browser.open(`${site.url}/`);            // waits for the page to start (window.__ui)
+//   const page = await browser.open(`${site.url}/`);            // waits for the page to start (window.__ui); open(url, { beforeLoad }) runs a script first
 //   await page.click('[data-id="add"]'); await page.type('[data-id="draft"]', 'milk'); await page.press('Enter');
 //   await page.evaluate('window.__ui.state()');
 //   await close();                                              // closes the browser and the server
@@ -64,7 +64,8 @@ export const launchBrowser = async () => {
     throw new Error(`Chrome (${executable}) did not start. Set CHROME_PATH to another build, or skip browser tests`);
   }
 
-  const open = async (url) => {
+  // `beforeLoad` is a script the browser runs in the page before any script of the page does (for a test that watches what the page does while it starts).
+  const open = async (url, { beforeLoad = null } = {}) => {
     const target = (await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json());
     const socket = new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((resolve, reject) => {
@@ -126,6 +127,7 @@ export const launchBrowser = async () => {
     };
     await send('Runtime.enable');
     await send('Page.enable');
+    if (beforeLoad) await send('Page.addScriptToEvaluateOnNewDocument', { source: beforeLoad });
     await send('Page.navigate', { url });
     await until(`document.readyState === 'complete' && !!window.__ui`, 'the page to start');
     return {

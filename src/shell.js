@@ -57,6 +57,9 @@ export const defineShell = (definition) => {
         dev: environment.dev,
         basePath: environment.basePath ?? '',
         debug: environment.debug ?? debug,
+        // A shell that reads from its page starts from its own defaults and is told the page's values after it started, so what it
+        // renders first may differ from what the server wrote after those values arrived: it takes the markup over without reporting that.
+        adopt: environment.adopt === true ? (reads.length ? 'quiet' : true) : false,
         plugins: plugins.map((plugin) => plugin({ ...environment, shellName: name })),
         specChecked: !environment.dev && checkedViews.has(view),
       });
@@ -80,16 +83,21 @@ export const defineShell = (definition) => {
       let madeShellRoot = false; // a shell root this call put in the document, which has to go again if the shell cannot start
       const serverMarkup = shellRoot ? [...shellRoot.childNodes] : null; // what the server wrote in the shell's element, put back if the shell cannot be made
       let shellApp = null;
+      // An adopted shell takes the markup the server wrote, the page's element included (the shell leaves what is inside it to the page), so
+      // nothing is taken out. Without adoption the page's element waits outside while the shell's mount replaces what its root holds.
+      const adopting = environment.adopt === true && shellRoot !== null && shellRoot.firstChild !== null;
       try {
-        if (shellRoot) slot.remove();
-        else {
+        if (shellRoot && !adopting) slot.remove();
+        else if (!shellRoot) {
           madeShellRoot = true;
           shellRoot = document.createElement('div');
           shellRoot.setAttribute('id', SHELL_ELEMENT_ID);
           slot.replaceWith(shellRoot);
         }
         shellApp = entry.createShell({ ...environment, root: shellRoot });
-        document.getElementById(APP_ELEMENT_ID).replaceWith(slot);
+        // The element the shell made for the page's place gives way to the one the page's markup is in (an adopted shell kept that one).
+        const place = document.getElementById(APP_ELEMENT_ID);
+        if (place !== slot) place.replaceWith(slot);
         win.__shell = shellApp;
         shellApp.onDestroy(() => {
           if (win.__shell === shellApp) delete win.__shell;

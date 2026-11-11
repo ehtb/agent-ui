@@ -11,6 +11,7 @@
 //   serialize(root)                     // HTML string of root's children
 
 import { escapeAttribute, escapeText } from './html-escape.js';
+import { TEXT_SEPARATOR } from './spec-core.js';
 
 const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 const BOOLEAN_PROPERTIES = ['disabled'];
@@ -271,8 +272,11 @@ const serializeAttributes = (element, selectedValue) => {
 
 // Serializes into one output list. Walking the linked children instead of building an array and a joined string at every
 // level keeps a large page linear: no intermediate arrays and no copying of a child's text into its parent's string.
+// The comment a text that follows a text is written after: a parser makes one node of neighbouring texts and none of an empty one, and an
+// app that takes the markup over (src/adopt.js) needs the node of each text of its spec. It takes the comment out as it takes the text.
 const appendNode = (node, selectedValue, output) => {
   if (node.nodeType === 3) {
+    if (node.previousSibling?.nodeType === 3) output.push(`<!--${TEXT_SEPARATOR}-->`);
     output.push(escapeText(node.data));
     return;
   }
@@ -288,8 +292,10 @@ const appendNode = (node, selectedValue, output) => {
   output.push(`<${tag}${serializeAttributes(node, selectedValue)}>`);
   if (VOID_TAGS.has(tag)) return;
   // A textarea's value is its content; a select's value becomes `selected` on the matching option.
-  if (tag === 'textarea') output.push(escapeText(node.currentValue));
+  // An HTML parser drops one newline right after <pre> and <textarea>, so a content that starts with one is written with a second.
+  if (tag === 'textarea') output.push(node.currentValue.startsWith('\n') ? '\n' : '', escapeText(node.currentValue));
   else {
+    if (tag === 'pre' && node.firstChild?.nodeType === 3 && node.firstChild.data.startsWith('\n')) output.push('\n');
     const childSelected = tag === 'select' ? node.currentValue : tag === 'optgroup' ? selectedValue : undefined;
     for (let child = node.firstChild; child; child = child.nextSibling) appendNode(child, childSelected, output);
   }

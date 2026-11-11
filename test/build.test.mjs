@@ -432,7 +432,7 @@ test('development build: readable, validator in its own chunk and active; produc
   const dev = buildWith({ ...base({ dev: true }), projectRoot: repositoryRoot, outDir: 'test/.output-dev' });
   const production = buildWith({ ...base({ dev: false }), projectRoot: repositoryRoot, outDir: 'test/.output-production' });
   try {
-    assert.deepEqual([...dev.chunks.validator.modules].sort(), ['src/base-path-checks.js', 'src/error-messages.js', 'src/errors.js', 'src/grammar.js', 'src/handler-checks.js', 'src/messages.js', 'src/namespaces.js', 'src/runtime-checks.js', 'src/spec-core.js', 'src/validate.js']);
+    assert.deepEqual([...dev.chunks.validator.modules].sort(), ['src/base-path-checks.js', 'src/error-messages.js', 'src/errors.js', 'src/grammar.js', 'src/handler-checks.js', 'src/messages.js', 'src/namespaces.js', 'src/nesting.js', 'src/runtime-checks.js', 'src/spec-core.js', 'src/validate.js']);
     // In development the runtime chunk is the framework's own modules and nothing else, so the hot swap never evaluates src/pages.js twice (build/presets.mjs).
     assert.ok(dev.chunks['agent-ui'].modules.includes('src/ui.js') && dev.chunks['agent-ui'].modules.every((path) => path.startsWith('src/')), dev.chunks['agent-ui'].modules.join(', '));
     assert.ok(dev.pages.site.chunksLoadedAtStartup.includes('validator'));

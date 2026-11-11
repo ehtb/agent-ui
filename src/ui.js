@@ -36,13 +36,14 @@
 // Reactivity: signals, effects, batched flush
 // ---------------------------------------------------------------------------
 
-import { DELEGATED_EVENTS, KEY_EVENTS, PAGE_PLUGIN, SVG_NAMESPACE, SVG_TAGS, URL_PROPS, isBinding, isPlainObject, toArray, matchesArgumentType, isUnsafeUrl, isSameValue, nextFrame, readEventPath, eventKeyName, splitRowPath } from './spec-core.js';
+import { APP_ELEMENT_ID, DELEGATED_EVENTS, KEY_EVENTS, PAGE_PLUGIN, SVG_NAMESPACE, SVG_TAGS, URL_PROPS, isBinding, isPlainObject, toArray, matchesArgumentType, isUnsafeUrl, isSameValue, nextFrame, readEventPath, eventKeyName, splitRowPath } from './spec-core.js';
 import { validate, grammar, findJsonProblems, findShapeProblems } from './validate.js';
 import { didYouMean, fail, failOwnedTwice } from './messages.js';
-import { checkBasePath, checkPluginProperties, checkPropertyHandler, noteRowsJumped, checkRowChanges, checkRowKey, checkRowState, checkRowStateWrite, checkEachKeys, consumeCheckedListProblem, forgetCheckedListProblems } from './runtime-checks.js';
+import { checkAdopt, checkBasePath, checkPluginProperties, checkPropertyHandler, noteRowsJumped, checkRowChanges, checkRowKey, checkRowState, checkRowStateWrite, checkEachKeys, consumeCheckedListProblem, forgetCheckedListProblems } from './runtime-checks.js';
 import { codedError } from './errors.js';
 import { ROW_STATE_KEY, flattenNamespaces, mergeInitialState, mergeStateValues, nestByNamespace, splitStatePath } from './namespaces.js';
 import { BASE_PATH_ATTRIBUTES, withBaseInAttribute } from './base-path.js';
+import { createAdopter } from './adopt.js';
 
 // One entry point for everything public: the validator and grammar live in validate.js, shared helpers in spec-core.js.
 export { validate, grammar, isPlainObject, toArray, isSameValue, readEventPath, eventKeyName, mergeInitialState };
@@ -221,7 +222,7 @@ const freezeDeep = (value) => {
 // Application: state, rendering, events, agent API
 // ---------------------------------------------------------------------------
 
-const APP_OPTIONS = ['namespaces', 'initialState', 'spec', 'root', 'plugins', 'dev', 'debug', 'basePath', 'specChecked'];
+const APP_OPTIONS = ['namespaces', 'initialState', 'spec', 'root', 'plugins', 'dev', 'debug', 'basePath', 'specChecked', 'adopt'];
 
 // Everything an app creates while it is being made (derived values, bindings, the effects of plugins) is collected, so that
 // `destroy()` can stop all of it. A page that replaces another one (src/navigation.js) needs the old app gone, not just hidden.
@@ -243,9 +244,10 @@ const createApp = (options, disposers) => {
   for (const key of Object.keys(options ?? {})) {
     if (!APP_OPTIONS.includes(key)) fail('app', `unknown option "${key}"`, `${didYouMean(key, APP_OPTIONS)}Allowed options: ${APP_OPTIONS.join(', ')}`);
   }
-  const { namespaces = {}, initialState = {}, spec, root, plugins = [], dev, debug = false, basePath = '', specChecked = false } = options;
+  const { namespaces = {}, initialState = {}, spec, root, plugins = [], dev, debug = false, basePath = '', specChecked = false, adopt = false } = options;
   if (typeof dev !== 'boolean') fail('app', `dev is ${JSON.stringify(dev) ?? 'missing'}`, 'Pass dev: true while developing (state is frozen and mistakes are reported) and dev: false in production. There is no default, so the mode is always written down');
   if (debug !== undefined && typeof debug !== 'boolean') fail('app', `debug is ${JSON.stringify(debug)}`, 'Write debug: true to make the browser console show what the app does, or leave it out');
+  checkAdopt(adopt);
   checkBasePath(basePath);
   // Server rendering passes a root from a server document; browsers and the test shim use the global one.
   const document = root.ownerDocument ?? globalThis.document;
@@ -627,6 +629,7 @@ const createApp = (options, disposers) => {
   // Transitions (opt-in per element with `transition: ms`). Only after the first render, so the initial page and
   // server markup never animate. Removal is delayed, never skipped, so state and DOM stay consistent.
   let firstRenderDone = false;
+  let adopter = null; // set while the first render takes over server markup (src/adopt.js), null for every render after it
   const mountedEachPaths = dev ? new Set() : null; // development: the lists that rendered, so the check of the others skips them
   const checkedListProblems = dev ? new Map() : null; // development: list problem -> how many the check at mount reported; the first render of that list does not repeat those
   const reportListProblem = (code, details) => consumeCheckedListProblem(checkedListProblems, code, details) || reportError(code, details);
@@ -697,21 +700,28 @@ const createApp = (options, disposers) => {
     if (basePath && BASE_PATH_ATTRIBUTES.includes(name)) value = withBaseInAttribute(basePath, name, value);
     const isAria = name.startsWith('aria-');
     if (value == null || (value === false && !isAria)) element.removeAttribute(name);
-    else element.setAttribute(name, value === true && !isAria ? '' : value);
+    else {
+      const written = value === true && !isAria ? '' : String(value);
+      // The same value is not written again: setting the src of an iframe or a video that already has it loads it again.
+      if (element.getAttribute(name) !== written) element.setAttribute(name, written);
+    }
   };
 
   // Like the bindings, nodes are compiled in two steps: compileNode(node, path) does the spec-walking once and returns
   // stamp(row), which creates one DOM instance and its effects. An `each` compiles its template once and stamps
   // it per row, so adding the 1,000th row never re-walks the template JSON.
   const compileNode = (node, path) => {
-    if (typeof node === 'string') return () => document.createTextNode(node);
+    if (typeof node === 'string') return () => (adopter ? adopter.text(node, false) : document.createTextNode(node));
     if (isBinding(node)) {
       const bindRow = planBinding(node);
       return (row) => {
-        const textNode = document.createTextNode('');
         const readValue = bindRow(row);
+        let textNode = null;
         effect(() => {
-          textNode.data = readValue() ?? '';
+          const value = readValue() ?? '';
+          // The first render of an adopted page takes the server's text node, which already holds the value (or makes one that does).
+          if (textNode === null && adopter) textNode = adopter.text(String(value), true);
+          else (textNode ??= document.createTextNode('')).data = value;
         });
         return textNode;
       };
@@ -754,9 +764,15 @@ const createApp = (options, disposers) => {
     const childStamps = toArray(node.children).map((child, index) => compileNode(child, `${path}.${index}`));
     const isSvg = SVG_TAGS.includes(node.tag); // drawn in the SVG namespace, or the browser makes an HTML element it does not draw
 
+    // What the server wrote inside these elements is not the spec's to take: the slot of a shell holds the page's markup (the page's own
+    // app takes it next), and a textarea's content is its value. The HTML id `app` is the mount point of a page (src/hydrate.js) and so reserved:
+    // a childless element with that id is the shell's slot, whatever view it is in (`pageSlot()` writes it).
+    const keepsServerChildren = node.tag === 'textarea' || (node.props?.id === APP_ELEMENT_ID && childStamps.length === 0);
+
     return (row) => {
-      const element = isSvg ? document.createElementNS(SVG_NAMESPACE, node.tag) : document.createElement(node.tag);
-      element.setAttribute('data-id', dataId);
+      const claiming = adopter; // null once the first render is done: every element after that is made new
+      const element = claiming ? claiming.element(node.tag, dataId, isSvg ? SVG_NAMESPACE : null) : isSvg ? document.createElementNS(SVG_NAMESPACE, node.tag) : document.createElement(node.tag);
+      if (!claiming) element.setAttribute('data-id', dataId);
       const applyPlan = ({ name, bindRow, literal }) => {
         if (bindRow) {
           const readValue = bindRow(row);
@@ -781,7 +797,12 @@ const createApp = (options, disposers) => {
         element.__handlers = node.on;
         element.__row = row;
       }
-      for (const stamp of childStamps) element.append(stamp(row));
+      // Adopted children are in their place already; appending one would move it (and an iframe or a video that moves starts again).
+      for (const stamp of childStamps) {
+        const child = stamp(row);
+        if (!claiming) element.append(child);
+      }
+      claiming?.leave(keepsServerChildren);
       deferredPlans.forEach(applyPlan);
       if (elementObservers.size) announceAdded(element);
       return element;
@@ -798,15 +819,17 @@ const createApp = (options, disposers) => {
     };
 
     return (row) => {
-      const fragment = document.createDocumentFragment();
+      // An adopted branch has no fragment: its markers and its nodes are in the page already, in the order they are claimed.
+      const adopting = adopter;
+      const fragment = adopting ? null : document.createDocumentFragment();
       // The branch lives between two markers. Removing "everything between the markers" also removes content that a
       // nested `when` or `each` (a direct child of this branch) added after the branch was mounted.
-      const startMarker = document.createComment('');
-      const endMarker = document.createComment('');
+      const startMarker = adopting ? adopting.comment() : document.createComment('');
+      let endMarker = adopting ? null : document.createComment(''); // adopted: claimed after the branch, which stands between the two
       const readCondition = bindCondition(row);
       let mountedBranch = null; // 'children' | 'otherwise' | null
       let disposeBranch = null;
-      fragment.append(startMarker, endMarker);
+      fragment?.append(startMarker, endMarker);
       // When an enclosing branch is disposed, this branch's current effects must go with it.
       if (activeScope) activeScope.push(() => disposeBranch?.());
 
@@ -827,10 +850,12 @@ const createApp = (options, disposers) => {
         disposeBranch = runInScope(() => {
           branchNodes = branchStamps[wantedBranch].map((stamp) => stamp(row));
         });
+        if (adopter) return; // the first render of an adopted page: the branch is in the page already
         const parent = endMarker.parentNode;
         for (const branchNode of branchNodes) parent.insertBefore(branchNode, endMarker);
         branchNodes.forEach(markEntering);
       });
+      if (adopting) endMarker = adopting.comment();
       return fragment;
     };
   };
@@ -846,11 +871,12 @@ const createApp = (options, disposers) => {
 
     return (outerRow) => {
       mountedEachPaths?.add(path);
-      const fragment = document.createDocumentFragment();
-      const endMarker = document.createComment('');
+      const adopting = adopter; // an adopted list claims its end marker after its rows, which stand before it
+      const fragment = adopting ? null : document.createDocumentFragment();
+      let endMarker = adopting ? null : document.createComment('');
       const readItems = bindItems(outerRow);
       let rowsByKey = new Map();
-      fragment.append(endMarker);
+      fragment?.append(endMarker);
       // When an enclosing branch is disposed, the rows' effects must go with it.
       if (activeScope) activeScope.push(() => rowsByKey.forEach((row) => row.dispose()));
 
@@ -874,7 +900,7 @@ const createApp = (options, disposers) => {
         forgetCheckedListProblems(checkedListProblems, path);
         const nextRowsByKey = new Map();
         const enteringRows = [];
-        const parent = endMarker.parentNode;
+        const parent = endMarker?.parentNode; // not claimed yet in the first render of an adopted page, which places nothing
 
         for (const [index, item] of items.entries()) {
           const key = itemKeys[index];
@@ -882,6 +908,7 @@ const createApp = (options, disposers) => {
           if (row) {
             row.itemSignal.set(item);
           } else {
+            adopter?.alignRow(key);
             row = { itemSignal: signal(item) };
             // The scope of this row: the enclosing rows' names stay readable, and `as` adds this row's own.
             const scope = { signal: row.itemSignal, key, names: node.as ? { ...outerRow?.names, [node.as]: row.itemSignal } : outerRow?.names ?? {}, keys: node.as ? { ...outerRow?.keys, [node.as]: key } : outerRow?.keys ?? {} };
@@ -898,6 +925,12 @@ const createApp = (options, disposers) => {
           if (nextRowsByKey.has(key)) continue;
           row.dispose();
           removeNode(row.element);
+        }
+
+        if (adopter) {
+          // The first render of an adopted page: the rows are in the page, in order. Nothing is placed.
+          rowsByKey = nextRowsByKey;
+          return;
         }
 
         const afterReorder = reorderHandlers.size && rowsByKey.size ? [...reorderHandlers].map((handler) => handler([...rowsByKey].filter(([key]) => nextRowsByKey.has(key)).map(([, row]) => row.element))) : null;
@@ -920,6 +953,7 @@ const createApp = (options, disposers) => {
         enteringRows.forEach(markEntering);
         rowsByKey = nextRowsByKey;
       });
+      if (adopting) endMarker = adopting.comment();
       return fragment;
     };
   };
@@ -999,8 +1033,33 @@ const createApp = (options, disposers) => {
   const typedByAddress = new Map(formFieldsIn(root).map((field) => [addressOf(field), isCheckedField(field) ? field.checked : field.value]));
   const active = root.ownerDocument?.activeElement;
   const focusedAddress = active?.getAttribute?.('data-id') != null && isInsideRoot(active) ? addressOf(active) : null; // only what the app itself had focused
-  root.replaceChildren(compileNode(spec, '0')(null));
+  // An app that is told to adopt takes the nodes the server wrote (src/adopt.js). Not expected, but if taking them over throws, what it
+  // made is stopped, the root is emptied and the page is rendered from nothing, as an app that does not adopt does.
+  let adoptionSummary = null;
+  if (adopt && root.firstChild) {
+    adopter = createAdopter(root, document);
+    const adoptedEffects = [];
+    const outerScope = activeScope;
+    activeScope = adoptedEffects;
+    try {
+      compileNode(spec, '0')(null);
+      adoptionSummary = adopter.finish();
+      disposers.push(() => adoptedEffects.forEach((dispose) => dispose()));
+    } catch (error) {
+      adoptedEffects.forEach((dispose) => dispose());
+      adoptionSummary = { created: 0, removed: 0, first: String(error?.message ?? error), restarted: true };
+      adopter = null;
+      activeScope = outerScope; // what the new render makes belongs to the app, not to the list of the one that failed
+      root.replaceChildren(compileNode(spec, '0')(null));
+    } finally {
+      activeScope = outerScope;
+      adopter = null;
+    }
+  } else {
+    root.replaceChildren(compileNode(spec, '0')(null));
+  }
   firstRenderDone = true;
+  if (adoptionSummary && adopt === true) reportError('AUI0305', adoptionSummary);
   // Nothing to carry: no field held a value before this script ran, so walking the finished page would only be work. A
   // browser page with an input has one entry per field here and gets its typed values back; a server render has none.
   if (typedByAddress.size) {
@@ -1008,8 +1067,9 @@ const createApp = (options, disposers) => {
       const address = addressOf(field);
       if (!typedByAddress.has(address)) continue;
       const typed = typedByAddress.get(address);
-      if (isCheckedField(field)) field.checked = Boolean(typed);
-      else if (field.value !== typed) field.value = typed;
+      if (isCheckedField(field)) {
+        if (field.checked !== Boolean(typed)) field.checked = Boolean(typed);
+      } else if (field.value !== typed) field.value = typed;
     }
   }
   if (focusedAddress) [...root.querySelectorAll('[data-id]')].find((element) => addressOf(element) === focusedAddress)?.focus();
@@ -1051,7 +1111,7 @@ const createApp = (options, disposers) => {
     return false;
   };
   const describeRenderedElement = (element) => {
-    const childNodes = element.__app && element !== root ? [] : [...element.childNodes]; // the page inside a shell is described by its own app
+    const childNodes = (element.__app && element !== root) || element.localName === 'textarea' ? [] : [...element.childNodes]; // the page inside a shell is described by its own app; a textarea's text is its value, described as `value`
     const text = childNodes.filter((child) => child.nodeType === 3).map((child) => child.data).join('').trim();
     const children = childNodes.filter((child) => child.nodeType === 1 && child.getAttribute('data-transition') !== 'leave').map(describeRenderedElement); // a row on its way out is gone
     const classes = (element.getAttribute('class') || '').split(' ').filter(Boolean);

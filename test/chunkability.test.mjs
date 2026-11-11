@@ -15,7 +15,7 @@ const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const reached = (file) => buildModuleGraph({ projectRoot: root, entries: [{ name: 'probe', path: file }] }).order.slice().sort();
 
 // The runtime and what it always brings: the validator (swapped for a stub in production builds) and shared primitives.
-const RUNTIME = ['src/base-path.js', 'src/base-path-checks.js', 'src/devtools.js', 'src/error-messages.js', 'src/errors.js', 'src/grammar.js', 'src/handler-checks.js', 'src/messages.js', 'src/namespaces.js', 'src/runtime-checks.js', 'src/spec-core.js', 'src/ui.js', 'src/validate.js'];
+const RUNTIME = ['src/adopt.js', 'src/base-path.js', 'src/base-path-checks.js', 'src/devtools.js', 'src/error-messages.js', 'src/errors.js', 'src/grammar.js', 'src/handler-checks.js', 'src/messages.js', 'src/namespaces.js', 'src/nesting.js', 'src/runtime-checks.js', 'src/spec-core.js', 'src/ui.js', 'src/validate.js'];
 
 // What each entry reaches. The shared primitives (spec-core, messages) are small and used by everything; the runtime and
 // the validator are reached only by the entries that need them.
@@ -25,7 +25,7 @@ const EXPECTED = {
   'src/url-pattern.js': ['src/url-pattern.js'],
   'src/resources.js': ['src/resources.js', 'src/messages.js', 'src/spec-core.js'],
   'src/window-events.js': ['src/window-events.js', 'src/window-events-checks.js', 'src/grammar.js', 'src/handler-checks.js', 'src/namespaces.js', ...PRIMITIVES],
-  'src/spec-tools.js': ['src/spec-tools.js', 'src/spec-walk.js', 'src/grammar.js', 'src/handler-checks.js', 'src/error-messages.js', 'src/validate.js', 'src/namespaces.js', ...PRIMITIVES],
+  'src/spec-tools.js': ['src/spec-tools.js', 'src/spec-walk.js', 'src/grammar.js', 'src/handler-checks.js', 'src/error-messages.js', 'src/validate.js', 'src/namespaces.js', 'src/nesting.js', ...PRIMITIVES],
   'src/components.js': ['src/components.js', ...PRIMITIVES],
   // Builders: the dev checks (swapped for a stub in production) bring the tables of the grammar, not the validator.
   'src/spec.js': ['src/spec.js', 'src/spec-checks.js', 'src/handler-checks.js', 'src/hydrate.js', 'src/base-path.js', 'src/grammar.js', 'src/namespaces.js', ...PRIMITIVES],
@@ -34,8 +34,8 @@ const EXPECTED = {
   // The plugin helper for drawing into an element: only a page whose plugins import it downloads it.
   'src/mount-element.js': ['src/mount-element.js', 'src/spec-walk.js', 'src/errors.js', 'src/error-messages.js', ...PRIMITIVES],
   'src/namespaces.js': ['src/namespaces.js'],
-  'src/validate.js': ['src/validate.js', 'src/grammar.js', 'src/handler-checks.js', 'src/error-messages.js', 'src/namespaces.js', ...PRIMITIVES],
-  'src/hydrate.js': ['src/hydrate.js', 'src/base-path.js'],
+  'src/validate.js': ['src/validate.js', 'src/grammar.js', 'src/handler-checks.js', 'src/error-messages.js', 'src/namespaces.js', 'src/nesting.js', ...PRIMITIVES],
+  'src/hydrate.js': ['src/hydrate.js', 'src/base-path.js', 'src/spec-core.js'],
   // A shell brings the runtime and syncApps, and the navigation plugin the pages module: only a page that lists a shell downloads them.
   'src/shell.js': ['src/shell.js', 'src/shell-checks.js', 'src/sync-apps.js', 'src/sync-apps-checks.js', 'src/hydrate.js', ...RUNTIME],
   'src/navigation.js': ['src/navigation.js', 'src/document-markup-reader.js', 'src/pages.js', 'src/pages-checks.js', 'src/pages-server.js', 'src/hot.js', 'src/head.js', 'src/head-reader.js', 'src/head-document.js', 'src/html-escape.js', 'src/url-pattern.js', 'src/hydrate.js', ...RUNTIME],
@@ -53,7 +53,7 @@ for (const [entry, modules] of Object.entries(EXPECTED)) {
 }
 
 test('the pages entry is the app() runtime, hydration, the lazily fetched devtools (debug: true), the URL patterns, and the two halves production builds swap for stubs (page checks, server-only parts)', () => {
-  assert.deepEqual(reached('src/pages.js'), ['src/base-path-checks.js', 'src/base-path.js', 'src/devtools.js', 'src/error-messages.js', 'src/errors.js', 'src/grammar.js', 'src/handler-checks.js', 'src/head-document.js', 'src/head.js', 'src/hot.js', 'src/html-escape.js', 'src/hydrate.js', 'src/messages.js', 'src/namespaces.js', 'src/pages-checks.js', 'src/pages-server.js', 'src/pages.js', 'src/runtime-checks.js', 'src/spec-core.js', 'src/ui.js', 'src/url-pattern.js', 'src/validate.js']);
+  assert.deepEqual(reached('src/pages.js'), ['src/adopt.js', 'src/base-path-checks.js', 'src/base-path.js', 'src/devtools.js', 'src/error-messages.js', 'src/errors.js', 'src/grammar.js', 'src/handler-checks.js', 'src/head-document.js', 'src/head.js', 'src/hot.js', 'src/html-escape.js', 'src/hydrate.js', 'src/messages.js', 'src/namespaces.js', 'src/nesting.js', 'src/pages-checks.js', 'src/pages-server.js', 'src/pages.js', 'src/runtime-checks.js', 'src/spec-core.js', 'src/ui.js', 'src/url-pattern.js', 'src/validate.js']);
 });
 
 test('no browser-side module imports Node built-ins, the server or the build', () => {

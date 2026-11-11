@@ -13,6 +13,13 @@ export const checkBasePath = (basePath) => {
   if (!isBasePath(basePath)) fail('app', `basePath ${JSON.stringify(basePath)} is not allowed`, BASE_PATH_ADVICE);
 };
 
+// `adopt` says whether the root holds the markup a server rendered for this spec and state (src/adopt.js).
+export const checkAdopt = (adopt) => {
+  if (adopt !== false && adopt !== true && adopt !== 'quiet') {
+    fail('app', `adopt is ${JSON.stringify(adopt)}`, 'Write adopt: true when the root holds the markup a server rendered for this spec and state (the first render takes those nodes instead of making new ones), or leave it out. A shell that is told what its page shows after it started writes adopt: "quiet": it takes over the same way and does not report the differences that causes');
+  }
+};
+
 // The props the grammar leaves to a plugin, and the plugin that writes each (src/follow.js).
 const PLUGIN_PROPERTIES = { follow: 'withFollow, the export of @ehtb/agent-ui/follow (plugins: [withFollow] in page.js; follow in the plugins of app())' };
 
@@ -120,4 +127,20 @@ export const checkEachKeys = (spec, readList, renderedPaths, checked, report) =>
     }
   };
   walk(spec, '0');
+};
+
+// What the first render of an adopted page found different from the markup the server wrote (src/adopt.js), as a sentence for the report.
+// `kind` says what the adopter looked for; `found` is the node that was at the cursor (or null). The adopter calls this and keeps only
+// the first answer, so a production build, where this is a stub that answers nothing, counts the differences and says nothing of them.
+const describeNode = (node) => {
+  if (!node) return 'nothing';
+  if (node.nodeType === 1) return `<${node.localName} data-id="${node.getAttribute('data-id')}">`;
+  if (node.nodeType === 3) return `the text "${node.data.length > 24 ? `${node.data.slice(0, 24)}...` : node.data}"`;
+  return 'a comment';
+};
+export const describeAdoptionDifference = (kind, subject, parent, found) => {
+  if (kind === 'element') return `expected <${subject.tag} data-id="${subject.dataId}"> in ${parent ? describeNode(parent) : 'the root'}, found ${describeNode(found)}`;
+  if (kind === 'text') return `expected the text "${subject}", found ${describeNode(found)}`;
+  if (kind === 'marker') return `expected the marker of a list or a branch, found ${describeNode(found)}`;
+  return `${describeNode(found)} was not part of the render`;
 };

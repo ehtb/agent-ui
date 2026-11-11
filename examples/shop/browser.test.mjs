@@ -62,3 +62,35 @@ test('soft links replace the page and keep the document and the shell; the addre
   await until(`location.pathname === '/product/99' && window.__document === undefined`, 'the normal page load of a page that answers 404');
   assert.ok(report.loads.length === 2 && report.console.some((line) => /soft navigation to \/product\/99: the answer is 404/.test(line)));
 });
+
+test('the first page takes over the markup the server wrote: no element of the shell or the page is made again, and the page works', { skip: browser ? false : 'no Chrome found (set CHROME_PATH)' }, async () => {
+  const site = await serveSite({ projectRoot, outDir: '.output-browser-adopt' });
+  cleanups.push(site.close);
+  // Records every element that is added to or removed from the document from the moment the browser has read it (the scripts of the page run
+  // right after): a page that built its markup again would have removed every element the server wrote and added the same ones.
+  const watch = `
+    window.__changes = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const [kind, nodes] of [['added', record.addedNodes], ['removed', record.removedNodes]]) {
+          for (const node of nodes) if (node.nodeType === 1) window.__changes.push(kind + ' ' + node.localName + ' ' + (node.getAttribute('data-id') ?? ''));
+        }
+      }
+    });
+    observer.observe(document, { childList: true, subtree: true });
+    document.addEventListener('readystatechange', () => {
+      if (document.readyState === 'interactive') {
+        observer.takeRecords();
+        window.__changes.length = 0;
+      }
+    });`;
+  const { evaluate, until, report } = await browser.open(`${site.url}/`, { beforeLoad: watch });
+  await until(`document.readyState === 'complete' && window.__shell && window.__ui.state().route.hydrated`, 'the page and the shell to start');
+  await evaluate('window.__ui.settle().then(() => window.__shell.settle()).then(() => true)');
+  assert.deepEqual(await evaluate('window.__changes'), [], 'no element was added or removed while the page started');
+  assert.deepEqual([await evaluate('window.__ui.errors'), await evaluate('window.__shell.errors')], [[], []]);
+  assert.deepEqual(report.console.filter((line) => /AUI0305|differs from the markup/.test(line)), [], 'and the browser found nothing different from what the server wrote');
+  assert.match(await evaluate(`document.querySelector('[data-id="nav-cart"]').textContent`), /^Cart \(\d+\)$/, 'the shell shows the cart of the page it took over (the server holds the cart, so earlier tests may have filled it)');
+  await evaluate(`document.querySelector('[data-id="nav-checkout"]').click()`);
+  await until(`location.pathname === '/checkout' && document.querySelector('[data-id="checkout-title"]')`, 'the checkout page, by a soft link of the adopted shell');
+});

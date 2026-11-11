@@ -6,6 +6,7 @@ import { describeUnknownKey } from './error-messages.js';
 import { checkArgumentNames, checkHandlerParts, checkKeyChord, checkUnknownKeys as describeUnknownKeys } from './handler-checks.js';
 import { ATTRIBUTES, ATTRIBUTE_PREFIXES, isPrefixedAttribute, isReservedAttribute, ALLOWED_TAGS, ARGUMENT_TYPES, EACH_KEYS, ELEMENT_KEYS, LABELLED_TAGS, OPERAND_COUNTS, SVG_ATTRIBUTES, VOID_TAGS, WHEN_KEYS, grammar } from './grammar.js';
 import { ACTION_KEYS, IDENTIFIER, NAMESPACE_KEYS, ROW_STATE_KEY, SHAPE_KEYS, declaredStateKeys, flattenNamespaces, splitStatePath } from './namespaces.js';
+import { findNestingProblem } from './nesting.js';
 
 // ---------------------------------------------------------------------------
 // Grammar constants (single source of truth for the validator, the runtime and the docs)
@@ -527,7 +528,35 @@ export const validate = (spec, context = {}) => {
     toArray(node.children).forEach((child, index) => checkSvgPlacement(child, `${specPath}.${index}`, insideSvg || node.tag === 'svg'));
   };
 
+  // Nesting an HTML parser rewrites (src/nesting.js): the server's markup would not be the tree of the spec. A walk of its own carries the
+  // tags that are open through elements, each templates and when branches, as the walk of the svg does.
+  const checkNesting = (node, specPath, ancestors) => {
+    if (typeof node === 'string' || isBinding(node)) {
+      const found = findNestingProblem({ text: true, whitespace: typeof node === 'string' && /^\s*$/.test(node) }, ancestors);
+      if (found) problems.push(`${specPath}: ${found.problem}. ${found.fix}`);
+      return;
+    }
+    if (!isPlainObject(node)) return;
+    if ('when' in node) {
+      toArray(node.children).forEach((child, index) => checkNesting(child, `${specPath}.when.${index}`, ancestors));
+      toArray(node.otherwise).forEach((child, index) => checkNesting(child, `${specPath}.otherwise.${index}`, ancestors));
+      return;
+    }
+    if ('each' in node) return isPlainObject(node.template) && checkNesting(node.template, `${specPath}.each`, ancestors);
+    if (typeof node.tag !== 'string') return;
+    const found = findNestingProblem({ tag: node.tag, props: node.props }, ancestors);
+    if (found) {
+      // What is inside is not read again: the browser would have put it somewhere else, and each element of it would be reported for the same mistake.
+      problems.push(`${specPath}: ${found.problem}. ${found.fix}`);
+      return;
+    }
+    toArray(node.children).forEach((child, index) => checkNesting(child, `${specPath}.${index}`, [...ancestors, node.tag]));
+  };
+
   checkNode(spec, '$', false);
   checkSvgPlacement(spec, '$', false);
+  // The root of an app is a div (a page's mount point, a shell's): the spec stands inside it. An app made by hand with another kind of root
+  // element (a `table`, a `ul`) is judged as if it were in a div.
+  checkNesting(spec, '$', ['div']);
   return problems;
 };
