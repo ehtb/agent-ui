@@ -2,6 +2,22 @@
 
 The project follows [semantic versioning](https://semver.org/) from 1.0.0. Until then a minor version (0.x.0) may change the grammar, an API or a message, and the entry says how to move. What counts as the public surface is in `README.md`, "Browser Support, Stability & Maturity".
 
+## Unreleased
+
+### Added
+
+- **The browser takes over the markup the server wrote** instead of building the page again (`app({ adopt })`; `startPage` turns it on for the first page of a document and its shell). A playing video, an iframe, a scroll position and an animation survive, and the browser does about half the layout and style work at 1,000 to 5,000 rows (`docs/DESIGN.md`, "Taking over server markup", has the measurement and its limits). Where a node is not what the browser's own render makes, only that node is made again and `AUI0305` reports it once. `docs/API.md` section 12 has the rules.
+- **`agent-ui check` compares each page with what a browser would render** from the state the document carries (`renderFirstPass`, `browserState` and `pageHtml` of the `renderPage` result): a page that differs from the server's markup, differs between two renders (random numbers, a counter), or changes with the time, the time zone or the locale is reported with what it depends on and where the markup first differs. A check renders each URL at least three more times.
+- **The validator refuses nestings an HTML parser rewrites** (`src/nesting.js`): a block in a `p`, a `tr` straight in a `table`, a link in a link, an item in an item without a list, a form in a form, anything but options in a `select`, children in a `textarea`. Each message says what the browser does and what to write.
+- **Testing helpers:** `parseHtml(html, root)` in `@ehtb/agent-ui/testing/dom-shim.mjs` reads server markup the way a browser does, and `browser.open(url, { beforeLoad })` runs a script before the page's own.
+
+### Changed
+
+- **The server writes `<!--|-->` between two neighbouring texts**, and a second newline after `<pre>` and `<textarea>` when the content starts with one, so a parser reads the markup back as it was written. To move: a test that matches exact markup of a page with a text next to a binding (`Cart: 0`) now matches `Cart: <!--|-->0`.
+- **A spec the validator refused nothing about before may now fail** on one of the nestings above, in development and in `agent-ui check`. The `each` topic of `agent-ui explain` and some tests nested a `li` in a `li`. To move: put the nested items in their own `ul` or `ol`.
+- **A `textarea` has no children** (its text is the prop `value`); `outline()` no longer reports a textarea's text, only its `value`.
+- **The runtime is about 5 KB larger** (47 to 52 KB, 13 to 14 KB gzipped).
+
 ## 0.4.0 - 2026-11-09
 
 ### Added
