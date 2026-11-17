@@ -467,7 +467,7 @@
       },
       "startupSize": {
         "bytes": 570298,
-        "gzipBytes": 112444
+        "gzipBytes": 112445
       }
     },
     "docs-build": {
@@ -494,7 +494,7 @@
       },
       "startupSize": {
         "bytes": 271848,
-        "gzipBytes": 62065
+        "gzipBytes": 62066
       }
     },
     "docs-changelog": {
@@ -520,8 +520,8 @@
         "gzipBytes": 6392
       },
       "startupSize": {
-        "bytes": 180616,
-        "gzipBytes": 43938
+        "bytes": 181935,
+        "gzipBytes": 44131
       }
     },
     "docs-converting": {
@@ -893,7 +893,7 @@
     },
     "cookbook-async-list": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-async-list.1005ffae.js",
+      "javascript": "/agent-ui/assets/cookbook-async-list.1bf44b59.js",
       "modules": [
         ".agent-ui/cookbook-async-list/spec.js",
         "pages/cookbook/async-list/page.js",
@@ -918,7 +918,7 @@
     },
     "cookbook-browser-only-plugin": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-browser-only-plugin.058741ac.js",
+      "javascript": "/agent-ui/assets/cookbook-browser-only-plugin.e843b36e.js",
       "modules": [
         ".agent-ui/cookbook-browser-only-plugin/spec.js",
         "pages/cookbook/browser-only-plugin/page.js",
@@ -943,7 +943,7 @@
     },
     "cookbook-combobox": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-combobox.7cb2fa1c.js",
+      "javascript": "/agent-ui/assets/cookbook-combobox.9cfb956b.js",
       "modules": [
         ".agent-ui/cookbook-combobox/spec.js",
         "pages/cookbook/combobox/page.js",
@@ -968,7 +968,7 @@
     },
     "cookbook-drag-reorder": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-drag-reorder.ad0827a6.js",
+      "javascript": "/agent-ui/assets/cookbook-drag-reorder.75420662.js",
       "modules": [
         ".agent-ui/cookbook-drag-reorder/spec.js",
         "pages/cookbook/drag-reorder/page.js",
@@ -993,7 +993,7 @@
     },
     "cookbook-draw-into-element": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-draw-into-element.3487c409.js",
+      "javascript": "/agent-ui/assets/cookbook-draw-into-element.4b770ff4.js",
       "modules": [
         ".agent-ui/cookbook-draw-into-element/spec.js",
         "pages/cookbook/draw-into-element/page.js",
@@ -1018,7 +1018,7 @@
     },
     "cookbook-form-validation": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-form-validation.926035c1.js",
+      "javascript": "/agent-ui/assets/cookbook-form-validation.9338cab8.js",
       "modules": [
         ".agent-ui/cookbook-form-validation/spec.js",
         "pages/cookbook/form-validation/page.js",
@@ -1043,7 +1043,7 @@
     },
     "cookbook-format-values": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-format-values.59390ea1.js",
+      "javascript": "/agent-ui/assets/cookbook-format-values.f75aa660.js",
       "modules": [
         ".agent-ui/cookbook-format-values/spec.js",
         "pages/cookbook/format-values/page.js",
@@ -1068,7 +1068,7 @@
     },
     "cookbook-list-edit": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-list-edit.213bb13d.js",
+      "javascript": "/agent-ui/assets/cookbook-list-edit.c974efd7.js",
       "modules": [
         ".agent-ui/cookbook-list-edit/spec.js",
         "pages/cookbook/list-edit/page.js",
@@ -1093,7 +1093,7 @@
     },
     "cookbook-modal": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-modal.c819198b.js",
+      "javascript": "/agent-ui/assets/cookbook-modal.c91c1c65.js",
       "modules": [
         ".agent-ui/cookbook-modal/spec.js",
         "pages/cookbook/modal/page.js",
@@ -1118,7 +1118,7 @@
     },
     "cookbook-nested-rows": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-nested-rows.140b76e1.js",
+      "javascript": "/agent-ui/assets/cookbook-nested-rows.d52ffc1a.js",
       "modules": [
         ".agent-ui/cookbook-nested-rows/spec.js",
         "pages/cookbook/nested-rows/page.js",
@@ -1143,7 +1143,7 @@
     },
     "cookbook": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook.92556d28.js",
+      "javascript": "/agent-ui/assets/cookbook.bae3d5e6.js",
       "modules": [
         ".agent-ui/cookbook/spec.js",
         "pages/cookbook/page.js",
@@ -1168,7 +1168,7 @@
     },
     "cookbook-row-state": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-row-state.574da260.js",
+      "javascript": "/agent-ui/assets/cookbook-row-state.25343521.js",
       "modules": [
         ".agent-ui/cookbook-row-state/spec.js",
         "pages/cookbook/row-state/page.js",
@@ -1193,7 +1193,7 @@
     },
     "cookbook-server-hooks": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-server-hooks.42e39c2a.js",
+      "javascript": "/agent-ui/assets/cookbook-server-hooks.8b2e8dbb.js",
       "modules": [
         ".agent-ui/cookbook-server-hooks/spec.js",
         "pages/cookbook/server-hooks/page.js",
@@ -1218,7 +1218,7 @@
     },
     "cookbook-soft-shell": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-soft-shell.0547629f.js",
+      "javascript": "/agent-ui/assets/cookbook-soft-shell.8c8f650b.js",
       "modules": [
         ".agent-ui/cookbook-soft-shell/spec.js",
         "pages/cookbook/soft-shell/page.js",
@@ -1243,7 +1243,7 @@
     },
     "cookbook-svg-icons": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-svg-icons.12463004.js",
+      "javascript": "/agent-ui/assets/cookbook-svg-icons.8932a7fc.js",
       "modules": [
         ".agent-ui/cookbook-svg-icons/spec.js",
         "pages/cookbook/svg-icons/page.js",
@@ -1268,7 +1268,7 @@
     },
     "cookbook-url-query": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/cookbook-url-query.7d9aba94.js",
+      "javascript": "/agent-ui/assets/cookbook-url-query.42374d82.js",
       "modules": [
         ".agent-ui/cookbook-url-query/spec.js",
         "pages/cookbook/url-query/page.js",
@@ -1314,7 +1314,7 @@
     },
     "docs-agent-rules": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/docs-agent-rules.ab0240ab.js",
+      "javascript": "/agent-ui/assets/docs-agent-rules.483133b2.js",
       "modules": [
         ".agent-ui/docs-agent-rules/spec.js",
         "pages/docs/agent-rules/page.js",
@@ -1339,7 +1339,7 @@
     },
     "docs-api": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/docs-api.3056088f.js",
+      "javascript": "/agent-ui/assets/docs-api.4cc53855.js",
       "modules": [
         ".agent-ui/docs-api/spec.js",
         "pages/docs/api/page.js",
@@ -1359,12 +1359,12 @@
       "lazyImports": [],
       "size": {
         "bytes": 448360,
-        "gzipBytes": 79614
+        "gzipBytes": 79615
       }
     },
     "docs-build": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/docs-build.3c893ba3.js",
+      "javascript": "/agent-ui/assets/docs-build.35c30df7.js",
       "modules": [
         ".agent-ui/docs-build/spec.js",
         "pages/docs/build/page.js",
@@ -1384,19 +1384,19 @@
       "lazyImports": [],
       "size": {
         "bytes": 149910,
-        "gzipBytes": 29235
+        "gzipBytes": 29236
       }
     },
     "docs-changelog": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/docs-changelog.9a137fdd.js",
+      "javascript": "/agent-ui/assets/docs-changelog.b2b442e7.js",
       "modules": [
         ".agent-ui/docs-changelog/spec.js",
         "pages/docs/changelog/page.js",
         ".agent-ui/docs-changelog/main.js"
       ],
       "moduleSizes": {
-        ".agent-ui/docs-changelog/spec.js": 58083,
+        ".agent-ui/docs-changelog/spec.js": 59402,
         "pages/docs/changelog/page.js": 143,
         ".agent-ui/docs-changelog/main.js": 303
       },
@@ -1408,13 +1408,13 @@
       ],
       "lazyImports": [],
       "size": {
-        "bytes": 58678,
-        "gzipBytes": 11108
+        "bytes": 59997,
+        "gzipBytes": 11301
       }
     },
     "docs-converting": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/docs-converting.e452c5b2.js",
+      "javascript": "/agent-ui/assets/docs-converting.b35829dc.js",
       "modules": [
         ".agent-ui/docs-converting/spec.js",
         "pages/docs/converting/page.js",
@@ -1439,7 +1439,7 @@
     },
     "docs-design": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/docs-design.8b6d2453.js",
+      "javascript": "/agent-ui/assets/docs-design.00217088.js",
       "modules": [
         ".agent-ui/docs-design/spec.js",
         "pages/docs/design/page.js",
@@ -1464,7 +1464,7 @@
     },
     "docs-guide": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/docs-guide.809dbf06.js",
+      "javascript": "/agent-ui/assets/docs-guide.3ff9515e.js",
       "modules": [
         ".agent-ui/docs-guide/spec.js",
         "pages/docs/guide/page.js",
@@ -1489,7 +1489,7 @@
     },
     "docs-overview": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/docs-overview.6c823429.js",
+      "javascript": "/agent-ui/assets/docs-overview.16173a9d.js",
       "modules": [
         ".agent-ui/docs-overview/spec.js",
         "pages/docs/overview/page.js",
@@ -1514,7 +1514,7 @@
     },
     "docs": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/docs.6f7f4e1e.js",
+      "javascript": "/agent-ui/assets/docs.980c55b3.js",
       "modules": [
         ".agent-ui/docs/spec.js",
         "pages/docs/page.js",
@@ -1539,7 +1539,7 @@
     },
     "docs-releasing": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/docs-releasing.99a875a9.js",
+      "javascript": "/agent-ui/assets/docs-releasing.a7d00755.js",
       "modules": [
         ".agent-ui/docs-releasing/spec.js",
         "pages/docs/releasing/page.js",
@@ -1564,7 +1564,7 @@
     },
     "examples": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/examples.8afd7327.js",
+      "javascript": "/agent-ui/assets/examples.d984ca15.js",
       "modules": [
         ".agent-ui/examples/spec.js",
         "pages/examples/page.js",
@@ -1589,7 +1589,7 @@
     },
     "index": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/index.09c76fdc.js",
+      "javascript": "/agent-ui/assets/index.553abd12.js",
       "modules": [
         ".agent-ui/index/spec.js",
         "pages/page.js",
@@ -1757,6 +1757,6 @@
       "pages/view.js",
       "build.config.mjs"
     ],
-    "hash": "e115be1e956f8480"
+    "hash": "6c488d61adce8ce7"
   }
 }
