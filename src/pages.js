@@ -27,8 +27,9 @@
 //               the view are built on the server and the build ships the result as data
 //   namespaces  { name: { state, derive, actions, resources, shapes, rowState } }: everything the page keeps in state, exactly as in
 //               app(). Shared namespaces are imported and listed here like any other. "route" is reserved: the framework
-//               provides route.params, the parameters of the URL (/product/3 -> route.params.id === '3'), and route.hydrated,
-//               false in the markup the server renders and true once the browser app has taken over
+//               provides route.params, the parameters of the URL (/product/3 -> route.params.id === '3'), route.query, the
+//               query of the URL, written with route.setQuery and route.clearQuery (in the browser the address is kept in
+//               step), and route.hydrated, false in the markup the server renders and true once the browser app has taken over
 //   ready       (state) => boolean: true when the page has what it needs (its data has loaded). The one definition of
 //               "loaded": the server waits for it before it renders (so the HTML is the finished page), `agent-ui check`
 //               waits for it, and `pending` is shown until it is true. Without it the page counts as ready at once
@@ -56,6 +57,36 @@ import { compileUrlPattern, withoutTrailingSlash } from './url-pattern.js';
 import { checkPage, checkPageExports, checkViewExports } from './pages-checks.js';
 import { exposeHot } from './hot.js';
 import { createDocumentDescriber, createStatusReader } from './pages-server.js';
+
+// The query of the URL as state: { key: value } of strings, the way a URL reads back. A key without a value is not there.
+const parseQuery = (search) => Object.fromEntries(new URLSearchParams(search ?? ''));
+const omitKey = (object, key) => {
+  const { [key]: gone, ...rest } = object;
+  return rest;
+};
+
+// Keeps the address in step with route.query (a page plugin, so it runs where the page runs): the URL is the page's
+// address, and a filter or a tab the visitor can copy or reload is what a URL is for. The state is written first and
+// only this writes the address, so a soft navigation (which pushes an entry of its own) sees a location that matches
+// the page it shows. replaceState, not push: the back button stays a page, and the URL always mirrors the page.
+const keepQueryCurrent = (win) => (api) => {
+  if (!win?.history?.replaceState || !win?.location) return; // a server renders the page too, and has no history to keep in step
+  api.watch(['route.query'], () => {
+    if (api.replaying) return; // the log being replayed is the app's past, not a new address
+    const query = api.get('route.query') ?? {};
+    // The address is changed where the state differs from it, key by key: a key the URL has more than once (?tag=a&tag=b), which the
+    // state reads as its last value, keeps every entry until the page writes that key, instead of being collapsed by an unrelated change.
+    const params = new URLSearchParams(win.location.search);
+    for (const key of new Set(params.keys())) {
+      if (!(key in query)) params.delete(key);
+      else if (params.getAll(key).at(-1) !== query[key]) params.set(key, query[key]);
+    }
+    for (const [key, value] of Object.entries(query)) if (!params.has(key)) params.append(key, value);
+    const search = params.toString();
+    const url = `${win.location.pathname}${search ? `?${search}` : ''}${win.location.hash}`;
+    if (`${win.location.pathname}${win.location.search}${win.location.hash}` !== url) win.history.replaceState(win.history.state, '', url);
+  });
+};
 
 // The parts of a view.js module that definePage takes (`import * as viewModule from './view.js'`), checked first: a misspelt
 // export is reported with the file and the nearest valid name instead of being ignored. The generated modules call this.
@@ -87,13 +118,21 @@ export const definePage = (page, { path, view, layout, pending, spec, shell: she
   };
   const statusOf = createStatusReader({ page, path });
 
-  // The framework's own namespace: the URL's parameters, set once when the page starts, and `hydrated`, false in the markup
+  // The framework's own namespace: the URL's parameters and query, set once when the page starts, and `hydrated`, false in the markup
   // the server renders and true once the browser app has taken over (startPage). `route.ready` says whether `ready` is true
   // (always true for a page that declares no `ready`); it is what the spec binds to for the `pending` view, and a page can show it.
+  // The query is written with route.setQuery and route.clearQuery; in the browser the address is kept in step (keepQueryCurrent).
   const routeNamespace = {
     // A page with a shell also has `route.destination` and `route.go`, the way a button takes the visitor to another page (src/shell.js).
-    state: { params: {}, hydrated: false, ...page.shell?.route.state },
-    actions: { hydrate: { args: {}, run: (store) => store.set('hydrated', true) }, ...page.shell?.route.actions },
+    state: { params: {}, query: {}, hydrated: false, ...page.shell?.route.state },
+    actions: {
+      hydrate: { args: {}, run: (store) => store.set('hydrated', true) },
+      // One key at a time, so a handler declares what it sets: act('route.setQuery', { key: 'page', value: '2' }).
+      // A list of handlers sets several; the value is a string, the way it reads back from the URL.
+      setQuery: { args: { key: 'string', value: 'string' }, run: (store, { key, value }) => store.set('query', { ...store.get('query'), [key]: value }) },
+      clearQuery: { args: { key: 'string' }, run: (store, { key }) => store.set('query', omitKey(store.get('query'), key)) },
+      ...page.shell?.route.actions,
+    },
     derive: {
       ready: (get) => {
         const snapshot = { route: { params: get('params') } };
@@ -161,16 +200,17 @@ export const definePage = (page, { path, view, layout, pending, spec, shell: she
     const { root, win, dev, initialState = {}, shell: shellApp, basePath = '' } = environment;
     const pathname = win?.location?.pathname === undefined ? path : withoutBase(basePath, win.location.pathname) ?? path;
     const params = pattern.match(withoutTrailingSlash(pathname)) ?? {};
+    const query = parseQuery(win?.location?.search);
     const ui = app({
       namespaces,
-      initialState: mergeInitialState(initialState, { [RESERVED_NAMESPACE]: { params } }),
+      initialState: mergeInitialState(initialState, { [RESERVED_NAMESPACE]: { params, query } }),
       spec: pageSpec,
       root,
       dev,
       basePath,
       adopt: environment.adopt === true, // only the first start of a document that the server rendered (startPage): the markup is taken over, not built again
       debug: environment.debug ?? page.debug, // the server says false; a browser says nothing, and the page decides
-      plugins: [...pagePlugins.map((plugin, index) => installPagePlugin(plugin, index, environment)), keepTitleCurrent(win)],
+      plugins: [...pagePlugins.map((plugin, index) => installPagePlugin(plugin, index, environment)), keepTitleCurrent(win), keepQueryCurrent(win)],
       // The spec and namespaces of a page never change, so production checks them once. A caller's initial state is checked every time.
       specChecked: specChecked && !dev && Object.keys(initialState).length === 0,
     });

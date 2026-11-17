@@ -300,6 +300,42 @@ test('nested-rows: the inner template reads the outer row, in the label and in t
   assert.deepEqual(texts('line-label'), ['Ada: pen']);
 });
 
+test('url-query: the topic and the page are the URL, the buttons write them, and the list follows', async () => {
+  const { ui, byId, texts } = await mountRecipe('url-query');
+  assert.deepEqual(ui.state().route.query, {});
+  assert.deepEqual(texts('page-of')[0], 'Page 1 of 3');
+  assert.equal(ui.get('books.visible').length, 3);
+
+  fireEvent(byId('next')[0], 'click');
+  await ui.settle();
+  assert.deepEqual(ui.state().route.query, { page: '2' });
+  assert.deepEqual(ui.get('books.visible').map((book) => book.id), [4, 5, 6], 'the second page of every topic');
+
+  fireEvent(byId('previous')[0], 'click');
+  await ui.settle();
+  assert.deepEqual(ui.state().route.query, { page: '1' });
+  assert.deepEqual(ui.get('books.visible').map((book) => book.id), [1, 2, 3], 'the first page again');
+
+  fireEvent(byId('topic-poetry')[0], 'click');
+  await ui.settle();
+  assert.deepEqual(ui.state().route.query, { page: '1', topic: 'poetry' });
+  assert.deepEqual(ui.get('books.visible').map((book) => book.id), [2, 5], 'the poetry shelf is one page');
+  assert.equal(byId('topic-poetry')[0].classNames.includes('current'), true, 'the button that is the topic is marked from the state');
+
+  fireEvent(byId('next')[0], 'click');
+  await ui.settle();
+  assert.deepEqual(ui.state().route.query, { page: '1', topic: 'poetry' }, 'the button asks for the clamped page, so the URL never holds a page the topic does not have');
+  assert.deepEqual(ui.get('books.visible').map((book) => book.id), [2, 5]);
+  assert.deepEqual(texts('page-of')[0], 'Page 1 of 1');
+
+  fireEvent(byId('clear')[0], 'click');
+  await ui.settle();
+  assert.deepEqual(ui.state().route.query, {}, 'clearing removes both keys');
+  assert.deepEqual(ui.get('books.visible').length, 3);
+  assert.equal(byId('topic-all')[0].classNames.includes('current'), true, 'all is the topic again');
+  assert.deepEqual(ui.errors, []);
+});
+
 test('row-state: each row opens on its own, keeps its note, and is forgotten with its person', async () => {
   const { ui, byId } = await mountRecipe('row-state');
   fireEvent(byId('person-toggle')[1], 'click');

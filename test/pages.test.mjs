@@ -26,7 +26,7 @@ const open = async (definition, url, fetchFunction = async () => null) => {
 test('a page is one app: its namespaces plus the framework\'s "route" namespace; the spec validates', () => {
   const definition = define({ namespaces: { cart: { state: { lines: [] } }, product: { state: { open: false } } } }, '/product/:id');
   assert.deepEqual(Object.keys(definition.namespaces), ['route', 'cart', 'product']);
-  assert.deepEqual(definition.namespaces.route.state, { params: {}, hydrated: false });
+  assert.deepEqual(definition.namespaces.route.state, { params: {}, query: {}, hydrated: false });
   assert.deepEqual(validate(definition.spec, { namespaces: definition.namespaces }), []);
 });
 

@@ -83,7 +83,7 @@ test('renderPage: the page reads route.params from the URL and the output equals
   assert.match(list.html, /href="\/item\/\d+"/); // plain links to another page
 
   const detail = await renderCatalog('/item/3');
-  assert.deepEqual(detail.state.route, { params: { id: '3' }, hydrated: false });
+  assert.deepEqual(detail.state.route, { params: { id: '3' }, query: {}, hydrated: false });
   assert.match(detail.html, /All items/);
 
   // Parity: mounting the same app on the shim DOM in the browser produces the same outline.
@@ -238,7 +238,7 @@ test('state transfer: the state script is safe inside HTML and the client mounts
   assert.ok(!script.slice(0, -'</script>'.length).includes('</script>'));
   const page = await renderCatalog('/');
   const element = { textContent: JSON.stringify(page.state) };
-  assert.deepEqual(readServerState({ getElementById: (id) => (id === 'agent-ui-state' ? element : null) }).route, { params: {}, hydrated: false });
+  assert.deepEqual(readServerState({ getElementById: (id) => (id === 'agent-ui-state' ? element : null) }).route, { params: {}, query: {}, hydrated: false });
   assert.deepEqual(readServerState({ getElementById: () => null }), {});
   assert.deepEqual(readServerState({ getElementById: () => ({ textContent: '{broken' }) }), {});
 

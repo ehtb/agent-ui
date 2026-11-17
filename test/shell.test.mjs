@@ -260,7 +260,7 @@ test('route.go exists on a page with a shell: the shell\'s navigate when it has 
 
   const plain = define(undefined, {}, { view: pageView }).create({ root: createRoot(), win, fetchFunction: async () => null, dev: true });
   assert.match(plain.dispatch('route.go', { href: '/x' }) ?? '', /unknown action route\.go/);
-  assert.deepEqual(plain.state().route, { params: {}, hydrated: false }, 'a page without a shell has the route namespace it always had');
+  assert.deepEqual(plain.state().route, { params: {}, query: {}, hydrated: false }, 'a page without a shell has the route namespace it always had');
 });
 
 test('renderPage ends the shell and the page it started when it throws, and hands both back when it does not', async () => {

@@ -57,7 +57,7 @@ test('every URL arrives rendered for that URL: the list, an article, and a missi
   assert.equal(page.status, 200);
   assert.ok(markup(page.html).includes(articles[1].title) && markup(page.html).includes(articles[1].body));
   assert.ok(!markup(page.html).includes(articles[0].body)); // only this article is in the markup
-  assert.deepEqual(embeddedState(page.html).route, { params: { id: '2' }, hydrated: false });
+  assert.deepEqual(embeddedState(page.html).route, { params: { id: '2' }, query: {}, hydrated: false });
   assert.match(page.html, /Server-rendered: waiting for JavaScript/);
   assert.match(page.html, /<title>[^<]*<\/title>/);
 

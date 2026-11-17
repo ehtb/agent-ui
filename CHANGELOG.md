@@ -7,6 +7,8 @@ The project follows [semantic versioning](https://semver.org/) from 1.0.0. Until
 ### Added
 
 - **A real-browser benchmark** (`examples/bench`, `npm run example -- bench benchmark`): the startup of a server-rendered page at 1,000 to 20,000 rows (largest contentful paint, long tasks, layout shift, and the DOM writes the take-over makes) and the cost of the actions one visitor causes on a list of that size (seed, toggle, add, clear). It builds the example, serves it, and drives headless Chrome over the DevTools protocol with no dependency; it needs Chrome and is not part of `npm test`. The method, the numbers and their limits are in the example's README.
+- **`route.query`, and the actions that write it.** The URL's query is state of the framework's `route` namespace (`{ key: value }` of strings, read once when the page starts, server and browser): `route.setQuery` (args `{ key, value }`) sets one key, `route.clearQuery` (args `{ key }`) removes one, and in the browser the address is kept in step with `history.replaceState` (preserving the history state the site keeps), so a filter or a tab is copyable and survives a reload. The back button stays a page — replace, not push, on purpose. A server render renders the query the URL carries and the document carries that state to the browser; a page that takes query state is a page for a render server (a static build renders no query, and the browser makes the differing nodes again, `AUI0305`). The address is not written while the log is replayed. `docs/API.md`, section 13; recipe `url-query`.
+- **`route.query` keeps a repeated key until the page writes it.** An address with `?tag=a&tag=b` kept its first entry only after any unrelated `setQuery`; the address is now changed key by key.
 
 ### Fixed
 

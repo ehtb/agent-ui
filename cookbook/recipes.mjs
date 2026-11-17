@@ -61,6 +61,12 @@ export const recipes = [
     files: ['pages/row-state/page.js', 'pages/row-state/view.js'],
   },
   {
+    name: 'url-query',
+    title: 'A filter and a page number that live in the URL',
+    use: 'Anything the visitor should be able to copy, send or reload: `route.query` is the URL\'s query as state, written with `route.setQuery` and `route.clearQuery` (the address follows in the browser), and what it does to the list is `derive`. A page that takes query state is a page for a render server: a static build renders no query.',
+    files: ['pages/url-query/page.js', 'pages/url-query/view.js'],
+  },
+  {
     name: 'format-values',
     title: 'Numbers, dates and money shown the way the reader writes them',
     use: 'The grammar has no formatting operators and will not get any. Format in `derive` with `Intl`, one derived row per item, and wrap the per-item work in `memoizeItem` so a change to one item formats one item.',
