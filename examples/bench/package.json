@@ -1,0 +1,19 @@
+{
+  "name": "agent-ui-example-bench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A real-browser benchmark: startup (LCP, long tasks, CLS) and list updates at 1,000 to 20,000 rows.",
+  "scripts": {
+    "build": "agent-ui build",
+    "build:dev": "agent-ui build --dev",
+    "dev": "agent-ui dev",
+    "serve": "agent-ui serve",
+    "start": "agent-ui build && agent-ui serve",
+    "benchmark": "node benchmark.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@ehtb/agent-ui": "file:../.."
+  }
+}

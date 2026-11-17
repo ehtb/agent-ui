@@ -108,6 +108,29 @@ for (const dev of [true, false]) {
   });
 }
 
+// A real browser reports an attribute written with the value it already has as a mutation; the shim's setAttribute skips
+// it silently, so this counts the calls, not the changes: taking a list over must not write the rows' keys again.
+for (const dev of [true, false]) {
+  test(`dev: ${dev}: an adopted row is not written the key it already has`, async () => {
+    const html = await serverMarkup({});
+    const root = rootFor(html);
+    let attributeWrites = 0;
+    const original = ShimElement.prototype.setAttribute;
+    ShimElement.prototype.setAttribute = function (name, value) {
+      attributeWrites++;
+      return original.call(this, name, value);
+    };
+    try {
+      const { ui } = adoptOn(root, { dev });
+      await ui.settle();
+      assert.equal(attributeWrites, 0, `the take-over wrote ${attributeWrites} attributes on the server's nodes`);
+      ui.destroy();
+    } finally {
+      ShimElement.prototype.setAttribute = original;
+    }
+  });
+}
+
 test('an adopted page works: its handlers, its bindings, a list that grows in the right place, and a branch that flips', async () => {
   const root = rootFor(await serverMarkup({}));
   const { ui } = adoptOn(root);

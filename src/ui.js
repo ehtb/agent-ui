@@ -915,7 +915,9 @@ const createApp = (options, disposers) => {
             row.dispose = runInScope(() => {
               row.element = stampRow(scope);
             });
-            row.element.setAttribute('data-key', key);
+            // The server writes the key on every row it rendered, so an adopted row has it already; writing it again
+            // would be a write for nothing (a real browser reports the same-value write as a mutation).
+            if (row.element.getAttribute('data-key') !== String(key)) row.element.setAttribute('data-key', key);
             enteringRows.push(row.element);
           }
           nextRowsByKey.set(key, row);

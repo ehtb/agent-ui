@@ -2,6 +2,16 @@
 
 The project follows [semantic versioning](https://semver.org/) from 1.0.0. Until then a minor version (0.x.0) may change the grammar, an API or a message, and the entry says how to move. What counts as the public surface is in `README.md`, "Browser Support, Stability & Maturity".
 
+## Unreleased
+
+### Added
+
+- **A real-browser benchmark** (`examples/bench`, `npm run example -- bench benchmark`): the startup of a server-rendered page at 1,000 to 20,000 rows (largest contentful paint, long tasks, layout shift, and the DOM writes the take-over makes) and the cost of the actions one visitor causes on a list of that size (seed, toggle, add, clear). It builds the example, serves it, and drives headless Chrome over the DevTools protocol with no dependency; it needs Chrome and is not part of `npm test`. The method, the numbers and their limits are in the example's README.
+
+### Fixed
+
+- **An adopted row is not written the key it already has.** `data-key` was set on every row of a list taken over from the server, and a real browser reports the same-value write as a DOM mutation (the test shim skips a write of the same value, so only the new browser benchmark saw it). One write per row less at startup. `test/adopt.test.mjs` now counts the `setAttribute` calls, not the changes, so the shim test sees what the browser sees.
+
 ## 0.5.0 - 2026-11-11
 
 ### Added

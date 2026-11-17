@@ -63,7 +63,7 @@ test('examples/README.md lists every example in both tables, with its run comman
     assert.ok(text.includes(`\`npm run example -- ${name}\``), `${name} is missing from the table of run commands`);
   }
   const offline = examples.filter(({ name }) => own(name).length === 0).length;
-  const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+  const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen'];
   assert.ok(text.includes(`no network for the first ${words[offline]}`), `examples/README.md should say "no network for the first ${words[offline]}" (${offline} examples need no registry)`);
 });
 
