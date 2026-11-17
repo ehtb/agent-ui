@@ -628,8 +628,8 @@
         "gzipBytes": 6392
       },
       "startupSize": {
-        "bytes": 165167,
-        "gzipBytes": 40275
+        "bytes": 161394,
+        "gzipBytes": 39694
       }
     },
     "docs": {
@@ -1489,14 +1489,14 @@
     },
     "docs-overview": {
       "reason": "entry",
-      "javascript": "/agent-ui/assets/docs-overview.16173a9d.js",
+      "javascript": "/agent-ui/assets/docs-overview.f0b112fa.js",
       "modules": [
         ".agent-ui/docs-overview/spec.js",
         "pages/docs/overview/page.js",
         ".agent-ui/docs-overview/main.js"
       ],
       "moduleSizes": {
-        ".agent-ui/docs-overview/spec.js": 42641,
+        ".agent-ui/docs-overview/spec.js": 38868,
         "pages/docs/overview/page.js": 142,
         ".agent-ui/docs-overview/main.js": 299
       },
@@ -1508,8 +1508,8 @@
       ],
       "lazyImports": [],
       "size": {
-        "bytes": 43229,
-        "gzipBytes": 7445
+        "bytes": 39456,
+        "gzipBytes": 6864
       }
     },
     "docs": {
@@ -1757,6 +1757,6 @@
       "pages/view.js",
       "build.config.mjs"
     ],
-    "hash": "6c488d61adce8ce7"
+    "hash": "4e9f1d2edfba761b"
   }
 }

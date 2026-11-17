@@ -26,89 +26,38 @@ By removing the room for near-misses, agent-ui turns each one into an error the 
 
 ## Quick start
 
-A page is a folder under `pages/`, with two files: `page.js` for behavior and `view.js` for content. This one is a notes page at `/`.
+A page is a folder under `pages/` with two files: `page.js` for behavior and `view.js` for content. This one is a counter at `/`.
 
 ```javascript
 // pages/page.js
-const notes = {
-  state: { items: [], nextId: 1 },
-  derive: {
-    count: (get) => get("items").length,
-  },
+const counter = {
+  state: { count: 0 },
   actions: {
-    add: {
-      args: { text: "string" },
-      run: (store, { text }) => {
-        const id = store.get("nextId");
-        store.set("nextId", id + 1);
-        store.set("items", [...store.get("items"), { id, text }]);
-      },
-    },
-  },
-};
-
-const composer = {
-  state: { draft: "" },
-  actions: {
-    setDraft: {
-      args: { value: "string" },
-      run: (store, { value }) => store.set("draft", value),
-    },
-    submit: {
+    increment: {
       args: {},
-      calls: ["notes.add"],
-      run: (store, args, call) => {
-        call("notes.add", { text: store.get("draft") });
-        store.set("draft", "");
-      },
+      run: (store) => store.set("count", store.get("count") + 1),
     },
   },
 };
 
 export const page = {
-  head: { title: "Notes" },
-  namespaces: { notes, composer },
+  head: { title: "Counter" },
+  namespaces: { counter },
 };
-```
 
-```javascript
 // pages/view.js
-import {
-  act,
-  button,
-  each,
-  event,
-  form,
-  input,
-  item,
-  li,
-  main,
-  span,
-  state,
-  ul,
-} from "@ehtb/agent-ui/spec";
+import { act, button, main, p, state } from "@ehtb/agent-ui/spec";
 
 export const view = main(
   null,
-  form(
-    { on: { submit: act("composer.submit") } },
-    input({
-      "aria-label": "New note",
-      value: state("composer.draft"),
-      on: { input: act("composer.setDraft", { value: event("target.value") }) },
-    }),
-    button({ type: "submit" }, "Add"),
-  ),
-  ul(null, each("notes.items", "id", li(null, item("text")))),
-  span(null, state("notes.count"), " notes"),
+  p(null, "Clicked ", state("counter.count"), " times"),
+  button({ on: { click: act("counter.increment") } }, "Click me"),
 );
 ```
 
-The view has no logic. Typing runs `composer.setDraft`, and submitting runs `composer.submit`, which asks `notes.add` to write the note:
+State lives in a namespace (`counter`). The only way to change it is an action (`counter.increment`). The view has no logic: it shows `counter.count` and says which action a click runs.
 
-> "An action writes only its own namespace. To change another one, list its action in `calls` and let the owner do the writing. If any step throws, every write is undone."
-
-`agent-ui build` bundles the page as its own entry, `createSsrHandler` renders it on the server, and the browser takes over the markup instead of building it again.
+`agent-ui build` bundles the page, `createSsrHandler` renders it on the server, and the browser takes over the markup instead of building it again.
 
 ### Checking it without a browser
 
@@ -124,21 +73,19 @@ const ui = definePage(page, { path: "/", view }).create({
   root: createRoot(),
   dev: true,
 });
-ui.dispatch("composer.setDraft", { value: "buy milk" });
-ui.dispatch("composer.submit");
+ui.dispatch("counter.increment");
 await ui.settle();
 
-ui.state().notes.items; // [{ id: 1, text: "buy milk" }]
-ui.derived().notes.count; // 1
+ui.state().counter.count; // 1
 ui.errors; // []
 ```
 
 ### What a mistake looks like
 
-If `composer.submit` writes `notes.items` itself, the state does not change, and the error says what to do:
+If `increment` writes `"cnt"` instead of `"count"`, the state does not change, and the error says what to write:
 
 ```text
-composer.submit: store.set("notes.items"): state key "notes.items" belongs to namespace "notes", and composer.submit belongs to "composer". An action writes only its own namespace. If this change follows from composer.submit, list one of the actions of "notes" in calls and use call(...) (notes.add); if it does not, the state is in the wrong namespace: move it, or derive it
+counter.increment: store.set("cnt"): namespace "counter" has no state key or derived value "cnt". Did you mean "count"? It has: count
 ```
 
 A typo in a spec key, an input without an `aria-label` and a list without a `key` are refused the same way, with the path and the fix.
