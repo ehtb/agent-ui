@@ -5,189 +5,175 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node 22+](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](package.json)
 
-**A zero-dependency UI library with server rendering, built for agents to write, check and maintain.**
+_a UI library with server rendering, built for agents to write, check and maintain_
 
-Modern UI frameworks optimize for human ergonomics: implicit conventions, flexible APIs, and multiple ways to express the same component. For an LLM coding agent forty turns into a session, that flexibility is a trap. As context decays, agents hallucinate non-existent props, mix framework idioms, and introduce subtle state bugs that require a real browser to catch.
+## Introduction
 
-`agent-ui` inverts this design. It gives agents a closed, declarative JSON grammar authored through typed JavaScript builders, paired with strict, transactional state namespaces. There is exactly one valid shape for every construct. If an agent makes a mistake, the runtime rejects it immediately with an error message that gives the exact syntax fix. And because the entire UI, state tree, and interactive surface are plain data, an agent can render, inspect, and test every page headlessly in Node in milliseconds.
+agent-ui describes a UI as plain JSON, written with small typed builders. State is plain data in namespaces, and every change goes through a named, typed action. There is one valid shape for each construct, so a mistake is rejected on the spot, with a message that says how to fix it.
 
-Strictness for the machine does not compromise the output for humans. Pages map to real URLs, render on the server, and mount in the browser with a 14 KB gzipped runtime, zero virtual DOM overhead, progressive enhancement for forms, and built-in accessibility checks.
+Because the page, its state and everything it can do are data, an agent can render, inspect and test a page in Node, in milliseconds, without a browser.
 
----
+agent-ui is small (about 53 KB, 14 KB gzipped), [dependency-free](package.json) and [extendable](#built-in-plugins).
 
-## Why This Exists
+## Motivation
 
-An LLM agent is fast and tireless, but its context decays: it produces confident near-misses—React conventions in a non-React codebase, hallucinated options, or subtle state mutations—and it cannot see the browser unless you wire up heavy headless tooling.
+- Why should a button take `onClick`, `on:click` or `@click`, when the agent has to guess which one this codebase wants?
+- Why should a typo in a prop be ignored, when the page then looks fine and does nothing?
+- Why should an error say what is wrong, but not what to write instead?
+- Why should an agent need a browser to find out whether a page works?
 
-`agent-ui` keeps what a UI framework must do—keeping the DOM in sync with state quickly and predictably—and wraps it in a closed grammar that a machine can verify without a browser.
+By removing the room for near-misses, agent-ui turns each one into an error the agent can fix on its next turn.
 
-### Core Guarantees
+## Quick start
 
-- **Closed Grammar & Builder Syntax:** The UI is a pure JSON specification. You author it using thin builders (`div(...)`, `button(...)`, `state(...)`) that look like standard markup functions and return plain JSON. Because the UI is data, it can be validated, diffed, patched and generated.
-- **One Valid Form for Everything:** A page, an endpoint, and a build option each have one fixed shape. There is no shorthand or overloading. Unknown keys are rejected immediately, and typos return actionable "Did you mean?" suggestions.
-- **Errors the agent can fix on the next turn:** Every validation error names the exact path, the violation, and the valid fix. When an agent makes a mistake, the error message in its terminal gives it the exact syntax needed to self-correct on the next turn.
-- **Isolated, Transactional State:** State lives in flat, JSON-serializable namespaces and is mutated only by named, typed actions. Cross-namespace updates go through declared `calls`. If any part of an action chain throws, the entire transaction rolls back. Every action is logged for deterministic replay.
-- **Headless verification & cost budgets:** State, derived values, the interactive surface, and the rendered DOM tree are inspectable as JSON in Node. `measureAction` and `assertCost` count exact DOM writes, effect runs, and state changes. Build budgets turn pages that exceed size or node limits into hard CI errors.
-- **Zero Dependencies:** The runtime, compiler, dev server, SSR engine, and test runner use only Node's standard library and native browser APIs. `package.json` has zero `dependencies` or `devDependencies`.
-
----
-
-## A Taste of the Code
+A page is a folder under `pages/`, with two files: `page.js` for behavior and `view.js` for content. This one is a notes page at `/`.
 
 ```javascript
-import { app } from "@ehtb/agent-ui";
-import { button, state, act } from "@ehtb/agent-ui/spec";
-
-app({
-  namespaces: {
-    counter: {
-      state: { count: 0 },
-      actions: {
-        add: {
-          args: { by: "number" },
-          run: (store, { by }) => store.set("count", store.get("count") + by),
-        },
+// pages/page.js
+const notes = {
+  state: { items: [], nextId: 1 },
+  derive: {
+    count: (get) => get("items").length,
+  },
+  actions: {
+    add: {
+      args: { text: "string" },
+      run: (store, { text }) => {
+        const id = store.get("nextId");
+        store.set("nextId", id + 1);
+        store.set("items", [...store.get("items"), { id, text }]);
       },
     },
   },
-  spec: button(
-    { on: { click: act("counter.add", { by: 1 }) } },
-    "Clicked ",
-    state("counter.count"),
-    " times",
+};
+
+const composer = {
+  state: { draft: "" },
+  actions: {
+    setDraft: {
+      args: { value: "string" },
+      run: (store, { value }) => store.set("draft", value),
+    },
+    submit: {
+      args: {},
+      calls: ["notes.add"],
+      run: (store, args, call) => {
+        call("notes.add", { text: store.get("draft") });
+        store.set("draft", "");
+      },
+    },
+  },
+};
+
+export const page = {
+  head: { title: "Notes" },
+  namespaces: { notes, composer },
+};
+```
+
+```javascript
+// pages/view.js
+import {
+  act,
+  button,
+  each,
+  event,
+  form,
+  input,
+  item,
+  li,
+  main,
+  span,
+  state,
+  ul,
+} from "@ehtb/agent-ui/spec";
+
+export const view = main(
+  null,
+  form(
+    { on: { submit: act("composer.submit") } },
+    input({
+      "aria-label": "New note",
+      value: state("composer.draft"),
+      on: { input: act("composer.setDraft", { value: event("target.value") }) },
+    }),
+    button({ type: "submit" }, "Add"),
   ),
-  root: document.getElementById("app"),
+  ul(null, each("notes.items", "id", li(null, item("text")))),
+  span(null, state("notes.count"), " notes"),
+);
+```
+
+The view has no logic. Typing runs `composer.setDraft`, and submitting runs `composer.submit`, which asks `notes.add` to write the note:
+
+> "An action writes only its own namespace. To change another one, list its action in `calls` and let the owner do the writing. If any step throws, every write is undone."
+
+`agent-ui build` bundles the page as its own entry, `createSsrHandler` renders it on the server, and the browser takes over the markup instead of building it again.
+
+### Checking it without a browser
+
+The page runs in Node, on a test DOM, so an agent can use it and read the result:
+
+```javascript
+import { definePage } from "@ehtb/agent-ui/pages";
+import { createRoot } from "@ehtb/agent-ui/testing/dom-shim.mjs";
+import { page } from "./pages/page.js";
+import { view } from "./pages/view.js";
+
+const ui = definePage(page, { path: "/", view }).create({
+  root: createRoot(),
   dev: true,
 });
+ui.dispatch("composer.setDraft", { value: "buy milk" });
+ui.dispatch("composer.submit");
+await ui.settle();
+
+ui.state().notes.items; // [{ id: 1, text: "buy milk" }]
+ui.derived().notes.count; // 1
+ui.errors; // []
 ```
 
-There is no inline logic in the view spec, and no way to mutate state except through `counter.add`.
+### What a mistake looks like
 
-If an agent hallucinates a React convention in the builder, it fails at the call site with the exact fix:
+If `composer.submit` writes `notes.items` itself, the state does not change, and the error says what to do:
 
 ```text
-button({ onClick: ... }) -> button(...): "onClick" is another convention. Events go in "on": on: { click: act('namespace.verb', {}) }
-
+composer.submit: store.set("notes.items"): state key "notes.items" belongs to namespace "notes", and composer.submit belongs to "composer". An action writes only its own namespace. If this change follows from composer.submit, list one of the actions of "notes" in calls and use call(...) (notes.add); if it does not, the state is in the wrong namespace: move it, or derive it
 ```
 
-The builders return plain JSON—the exact wire format seen by the validator, the SSR renderer, the browser, and the action log:
+A typo in a spec key, an input without an `aria-label` and a list without a `key` are refused the same way, with the path and the fix.
 
-```json
-{
-  "tag": "button",
-  "on": { "click": ["counter.add", { "by": 1 }] },
-  "children": ["Clicked ", { "state": "counter.count" }, " times"]
-}
-```
+## State management
 
-If an agent generates or patches raw JSON and misspells a key, the app refuses to mount and prints the schema rule:
-
-```text
-$: unknown key chilren (allowed: tag, props, children, id, classes, on, transition). Did you mean "children"?
-
-```
-
----
-
-## Performance & Footprint
-
-Design priorities, in strict order: performance, accuracy, size.
-
-- **No Virtual DOM:** One state binding compiles to one effect that writes to one DOM property. There is no VDOM diffing overhead. Toggling a row in a list costs exactly three DOM mutations at any list size.
-- **14 KB gzipped:** The production runtime is about 53 KB, 14 KB gzipped, with readable symbols—only comments and whitespace are stripped. A real minifier plugs into `transform`, and source maps (`sourceMaps`) work with or without it: the minifier's map is followed back to your files. Framework code, each npm package and your app's code are separate chunks, so a deploy of your app leaves the rest cached. See `docs/BUILD.md`.
-- **Declared List Shapes:** Lists declare their item schema up front. Typos in `{item}` bindings fail at mount, malformed writes fail in development, and a `validate` hook lets external validators like Zod verify items at runtime.
-
----
-
-## Two Ways to Adopt
-
-You can drop `agent-ui` into an existing backend as isolated islands, or let it manage page routing and SSR.
-
-1. **As a Library (Islands):** Keep your existing server, router, and build pipeline. `renderPage()` renders a spec on the server, `stateScriptHtml()` serializes the state, and `readServerState()` + `app()` mount it in the browser. See `examples/islands` for a plain `node:http` server running two interactive islands with no build step.
-1. **With the Page Model:** A folder under `pages/` maps 1:1 to a URL (`pages/event/[id]/page.js` serves `/event/:id`). `agent-ui build` bundles each page as an independent entry point so clients only download what that route imports. `createSsrHandler` renders pages per request inside your host server.
-
-> **What it is not:** A web server or a monolithic application framework. Sessions, authentication, file uploads, WebSockets, compression, and caching belong to your host server (`SECURITY.md`).
-
----
-
-## Architecture: The Six Building Blocks
-
-Everything an application does fits into six primitives:
-
-| You Need                                        | Primitive                 | What It Gives You                                                                                                           |
-| ----------------------------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| State and behavior for a UI domain              | Namespace (inside an App) | Owns plain JSON state, pure derive functions and synchronous actions.                                                       |
-| Network IO, timers, DOM events, 3rd-party libs  | Plugin                    | (api) => void run once after mount. Reads via api.watch, writes via api.dispatch so all side effects become logged actions. |
-| A routable URL                                  | Page                      | A folder under pages/ containing page.js (behavior, plugins, status, head) and view.js (the spec).                          |
-| Persistent layout across page navigations       | Shell                     | A second app (defineShell) wrapping a page (e.g. header with cart badge, audio player). Reads page state one-way via reads. |
-| An interactive widget in a server-rendered page | Island                    | A standalone app() mounted into a host DOM element without the pages/ router.                                               |
-| Cross-app communication                         | syncApps                  | Watches keys in one app and dispatches an action in another. Unidirectional, validated at setup and logged on the receiver. |
-
-### Built-in Plugins
-
-Plugins are optional: a page lists the factories it needs in `page.js` and downloads only those modules. None is loaded for it.
-
-| Plugin         | Import                       | Use It When                                                              |
-| -------------- | ---------------------------- | ------------------------------------------------------------------------ |
-| withResources  | @ehtb/agent-ui/resources     | A namespace fetches async data (resources)                               |
-| windowEvents   | @ehtb/agent-ui/window-events | An action responds to window/document events (resize, keydown.Control+k) |
-| withHead       | @ehtb/agent-ui/head          | Document <head> is derived from state                                    |
-| withFollow     | @ehtb/agent-ui/follow        | Spec uses follow (e.g. dragged row tracks pointer)                       |
-| withMoves      | @ehtb/agent-ui/moves         | Reordered list rows use FLIP layout transitions                          |
-| withNavigation | @ehtb/agent-ui/navigation    | A shell uses soft: true links for client transitions                     |
-
-Custom plugins use the exact same `(api) => void` signature. For imperative DOM rendering (like canvas charts), `@ehtb/agent-ui/mount-element` provides a dedicated lifecycle helper.
-
----
-
-## State Management & Data Flow
-
-State flows strictly one way. The UI cannot mutate state directly, and state only reaches the DOM through explicit bindings.
+State goes one way: from state to derived values, to a binding, to one DOM property. Events go back only as a call to an action.
 
 ```text
 state (signals, plain JSON) ──derive──> derived values ──bindings──> 1 DOM property each
   ^
 actions (typed, atomic writers) <── DOM events (spec on: [actionName, args])
-
 ```
 
-- **Strict Encapsulation:** Inside a namespace, actions read their own keys directly (`store.get('draft')`) and read other namespaces via qualified names (`get('search.query')`). Under the hood, each qualified key is a signal. State is immutable; development builds `Object.freeze` state trees so accidental in-place mutations throw immediately.
-- **Memoized Derivations:** `derive` holds pure functions of state. Results that are structurally equal to their previous evaluation preserve object references, preventing downstream re-renders.
-- **Atomic Cross-Namespace Calls:** When an action needs to update another namespace, it declares the target in `calls` and invokes `call('search.clear', {})`. If any step throws, all state changes across all namespaces in that dispatch are rolled back.
-- **Deterministic Replay & Batched Timing:** Every completed outer action is recorded in the action log, enabling `ui.replay(log)` for session reproduction, headless regression tests, and state preservation across hot reloads. State updates are synchronous after `dispatch`; `derived()`, `outline()`, and DOM mutations batch into a single microtask resolved via `await ui.settle()`.
+State is plain JSON, replaced and never changed in place. Every action is logged, and `ui.replay(log)` reproduces a session. A derived list is computed in full when its inputs change: in Chrome (`examples/bench`), toggling one row of 20,000 costs 4.7 ms and three DOM writes.
 
-### Known Architectural Constraints
+## Built-in plugins
 
-To keep the mental model small for agents and the runtime fast, several boundaries are enforced by design:
+Plugins are optional: a page lists the ones it needs in `page.js` and downloads only those. A plugin of your own is `(api) => void`, and talks to the app through `api.watch` and `api.dispatch`.
 
-- **Flat Namespaces:** Namespaces are one level deep (`namespace.key`), and `calls` only go one level deep (a called action cannot call another namespace). Heavy cross-calling is a signal to restructure your state or use `derive`.
-- **No Hidden Component State:** Ephemeral UI state (like an edit-mode toggle or input draft) lives in the store. Per-row UI state (`open`, `selected`) is declared once on the namespace via `rowState` and read via `rowState('namespace.field')`.
-- **Full List Derivation (No Virtualization):** Derived lists recompute in full when inputs change, and `{item}` bindings read the innermost loop (outer loops are aliased with `as` and read via `row('name.field')`). Measured in a real browser (`examples/bench`): toggling one row of a 20,000-row list costs 4.7 ms and three DOM writes, adding one row 4.3 ms, and the list of 20,000 renders as 80,000 elements at startup — fine for thousands of rows, and past that the advice is a page of the data at a time (`budgets.listRows`, `docs/BUILD.md`).
-- **No Template Formatting Syntax:** Numbers, dates, and currencies are formatted in `derive` using standard `Intl` APIs and `memoizeItem`, keeping the view grammar closed.
-- **Synchronous, Serializable State:** State must be pure JSON (no `Date`, `Map`, or class instances). Actions are strictly synchronous; all async work happens in plugins.
-- **Whole-page Hydration:** The browser takes over the server's DOM nodes instead of building them again, so a playing video, a scroll position and an animation survive; where a node differs from what the browser's own render makes (invalid nesting that a parser rewrites, a derived value that depends on the time, the time zone or the locale), that node is made again and `AUI0305` says so. `agent-ui check` finds both causes. There is no partial or streamed hydration: the page is taken over whole.
-- **Strict Bundler Dialect:** To keep the built-in bundler zero-dependency and fast, source files must use relative imports with file extensions, named exports only, no circular dependencies, and no `export *`. Third-party packages that violate this (e.g., `zod`, `Tiptap`) are imported via a pre-bundled vendor file (`docs/BUILD.md`).
+| Plugin             | Import                         | Use it when                                                           |
+| ------------------ | ------------------------------ | --------------------------------------------------------------------- |
+| withResources      | @ehtb/agent-ui/resources       | A namespace fetches async data                                        |
+| windowEvents       | @ehtb/agent-ui/window-events   | An action answers a window or document event                          |
+| withHead           | @ehtb/agent-ui/head            | The document's `<head>` depends on state                              |
+| withFollow         | @ehtb/agent-ui/follow          | A dragged row follows the pointer                                     |
+| withMoves          | @ehtb/agent-ui/moves           | Reordered rows slide to their place                                   |
+| withNavigation     | @ehtb/agent-ui/navigation      | A shell has `soft: true` links that swap the page without a full load |
+| withPrefetch       | @ehtb/agent-ui/prefetch        | A shell fetches a soft link's page when the visitor hovers it         |
+| withViewTransition | @ehtb/agent-ui/view-transition | A shell animates the swap of a soft navigation                        |
 
----
-
-## Getting Started & Agent Tooling
+## Installing
 
 ```bash
 npm install @ehtb/agent-ui
-
-```
-
-Add the CLI scripts to `package.json` and create a minimal `build.config.mjs`:
-
-```json
-{
-  "scripts": {
-    "build": "agent-ui build",
-    "dev": "agent-ui dev",
-    "serve": "agent-ui serve",
-    "check": "agent-ui check"
-  }
-}
 ```
 
 ```javascript
@@ -199,90 +185,44 @@ export default ({ dev = false, validator } = {}) => ({
 });
 ```
 
-### Setting Up Your Coding Agent
+```text
+agent-ui build         write dist/ (--dev keeps the validator, --static renders every page to a file)
+agent-ui dev           serve with hot reload: the edited page is swapped in place and keeps its state
+agent-ui serve         serve the build on localhost:8080, rendering pages (for trying, not for production)
+agent-ui check         render every page headlessly and report spec, link, data and size problems
+agent-ui explain       print the one valid form of a recipe or a part of the grammar
+agent-ui schema        write the JSON Schema of the spec
+agent-ui init          write the rules for agents into the project's AGENTS.md
+```
 
-When using Claude Code, Cursor, OpenCode, or another coding agent in a project with `agent-ui`:
+To set up a coding agent, run `npx agent-ui init` once, point it to `node_modules/@ehtb/agent-ui/docs/AGENT-RULES.md`, and let it use `agent-ui explain` and `agent-ui check` in its loop. Every recipe in `cookbook/` is a page that `check` renders and a test drives, so copying one is safe.
 
-1. Run `npx agent-ui init` once. This injects the core syntax rules directly into your repository's root `AGENTS.md` so the agent loads them automatically (since agents rarely crawl `node_modules` unprompted).
-1. Point the agent to `node_modules/@ehtb/agent-ui/docs/AGENT-RULES.md` and `GUIDE.md`.
-1. Let the agent use `npx agent-ui explain [topic]` and `npx agent-ui check` in its tool loop. Every recipe in `cookbook/` (dialogs, comboboxes, drag-reorder lists, async resources, SVG icons) is executable and printable directly in the terminal via `agent-ui explain`.
+## Website & docs
 
-### CLI Reference
-
-| Command                 | Description                                                                                                                                                                  |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| agent-ui build          | Builds production assets to dist/ (hashed filenames, comments stripped, validator omitted). Pass --dev to retain the validator, or --static to pre-render static HTML files. |
-| agent-ui dev            | Starts the dev server with hot-reload (swaps edited pages in place while replaying action logs to preserve state).                                                           |
-| agent-ui serve          | Starts a local test server (http://localhost:8080, or `$PORT`; `--port` wins) for SSR pages, JSON APIs, and form posts. Not intended for production exposure—deploy behind your host server or CDN.     |
-| agent-ui check          | Renders every page in development mode headlessly, verifying all specs, links, data shapes, and size budgets at once.                                                        |
-| agent-ui explain [name] | Prints the canonical implementation for a cookbook recipe or grammar rule directly to stdout. Lists all available topics if called without arguments.                        |
-| agent-ui schema         | Emits the complete JSON Schema for the UI spec grammar.                                                                                                                      |
-| agent-ui init           | Writes the condensed agent instructions into the host project's AGENTS.md.                                                                                                   |
-
-`agent-ui --help` prints the command list; `agent-ui --version` prints the package version.
-
----
-
-## Type Safety Without a Build Step
-
-The framework's source code in `src/` is plain, untranspiled JavaScript so that when an agent inspects `node_modules/@ehtb/agent-ui/src`, what it reads is 1:1 with what runs.
-
-Alongside every JavaScript module, the package ships hand-written `.d.ts` and `.d.mts` declarations (`ui.d.ts`, `pages.d.ts`, `build/config.d.mts`).
-
-- **Zero-Config Editor Support:** Plain JS projects get full autocomplete and type checking simply by adding `// @ts-check`. TypeScript projects get full type resolution without needing a framework compile step.
-- **Readable Contracts:** `pages.d.ts` fits on a single screen and states the exact shape a caller may pass, free of internal implementation noise.
-- **Docs tested against the code:** Type definitions are tested via `test/types/check.js`, and documentation comments are tested against the codebase—every file path, CLI flag, and import name mentioned in the docs is asserted by the test suite.
-
----
+- <https://ehtb.github.io/agent-ui/>
+- docs/AGENT-RULES.md (start here), docs/GUIDE.md, docs/API.md, docs/BUILD.md, docs/DESIGN.md
+- cookbook/ and examples/README.md
 
 ## Browser Support, Stability & Maturity
 
-- **Runtime Targets:** Requires Node 22+ on the server and modern evergreen browsers (Chrome/Edge 93+, Firefox 92+, Safari 15.4+ — any environment supporting `Object.hasOwn`). Code is shipped as modern ES modules without transpilation bloat.
-- **Versioning:** Currently `0.x`. Minor releases may adjust the grammar or APIs, with migration paths documented in `CHANGELOG.md`. Starting at `1.0.0`, the spec grammar, exported APIs, CLI flags, build config keys, and error codes (`AUI` + 4 digits) will follow strict Semantic Versioning.
-- **Maturity:** This is young software. The architectural thesis—that a closed, self-explaining grammar measurably reduces agent error rates over long sessions—is a hypothesis documented in `docs/DESIGN.md`. Because LLMs have not seen `agent-ui` in pre-training, the design compensates with a minimal surface area, `agent-ui init`, and runtime error messages that teach the syntax on the fly.
-
----
-
-## Documentation & Repository Guide
-
-| Document / Path                     | Purpose                                                                                                               |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| docs/AGENT-RULES.md                 | Condensed rules for coding agents building apps with agent-ui. Start here.                                            |
-| docs/GUIDE.md                       | Architectural guide covering pages, routing, endpoints, and progressive forms.                                        |
-| docs/API.md                         | Complete reference: spec grammar, state semantics, minimal app examples, and test helpers.                            |
-| docs/BUILD.md                       | Bundler dialect rules, vendor file configuration, and deployment setups.                                              |
-| docs/CONVERTING.md                  | Step-by-step guide for porting React components (e.g., shadcn/ui) to agent-ui with parity tests.                      |
-| skills/migrate-to-agent-ui/SKILL.md | Agent skill for migrating full applications from other frameworks, including concept maps and inventory templates.    |
-| docs/DESIGN.md                      | First-principles rationale, trade-offs, and what is intentionally omitted.                                            |
-| docs/RELEASING.md                   | How a release is cut, tested and published.                                                                           |
-| cookbook/                           | Canonical, tested implementations of common UI patterns (accessible via agent-ui explain).                            |
-| examples/README.md                  | Runnable example apps, including examples/shop (code-splitting & bundle budgets), examples/islands (library mode) and examples/production-server (a dependency-free host). |
-
-### Contributing & Running Framework Tests
-
-```bash
-npm test                        # Run core framework tests (test/) and zero-dependency examples
-npm run test:framework          # Run framework unit/integration tests only (uses test/fixtures)
-npm run test:examples           # Run all examples, cookbook recipes, and migration skills
-npm run example -- events       # Build and start a specific example app (see examples/README.md)
-npm run example -- events test  # Run a specific script (build, dev, serve, test) inside an example
-npm run typecheck               # Verify hand-written .d.ts files against test/types/check.js (requires tsc)
-npm run schema                  # Regenerate docs/spec.schema.json
-
-```
+- **Targets:** Node 22+ on the server, and evergreen browsers (Chrome and Edge 93+, Firefox 92+, Safari 15.4+).
+- **Versioning:** `0.x`. A minor release may change the grammar, an API or a message, and `CHANGELOG.md` says how to move. From `1.0.0` it follows semantic versioning.
+- **Maturity:** young software. The thesis, that a closed grammar with messages that teach it lowers an agent's error rate, is a hypothesis recorded in `docs/DESIGN.md`.
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). The framework guide for contributors (and agents) is [AGENTS.md](https://github.com/ehtb/agent-ui/blob/main/AGENTS.md); it is for work on the framework and is not part of the published package.
+Want to contribute? Read [CONTRIBUTING.md](CONTRIBUTING.md). The guide for work on the framework is [AGENTS.md](https://github.com/ehtb/agent-ui/blob/main/AGENTS.md).
 
-## Security
+### Hacking guide
 
-Report a vulnerability privately as described in [SECURITY.md](SECURITY.md).
+There is nothing to install: the framework has no dependencies. You need Node 22.
 
-## Support
+```bash
+npm test                  # the framework's tests and the examples
+npm run test:framework    # the framework only
+npm run typecheck         # check the .d.ts files (needs tsc)
+```
 
-Questions, bugs and feature requests: [SUPPORT.md](SUPPORT.md) and the [issue tracker](https://github.com/ehtb/agent-ui/issues).
+Change something in `src/`, then add a test in `test/`. The docs are tested against the code, so change them in the same commit.
 
-## License
-
-MIT — see [LICENSE](LICENSE).
+Report a vulnerability as described in [SECURITY.md](SECURITY.md). Questions and bugs: [SUPPORT.md](SUPPORT.md). License: MIT, see [LICENSE](LICENSE).
