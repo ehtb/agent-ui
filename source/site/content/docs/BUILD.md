@@ -24,6 +24,7 @@ The package is split so that each part can be imported, bundled and dropped on i
 | Import | Part | Reaches |
 |---|---|---|
 | `agent-ui` | the runtime | the validator and three small shared modules (`src/spec-core.js`, `src/messages.js`, `src/namespaces.js`) |
+| `@ehtb/agent-ui/prefetch`, `/view-transition` | the plugins that make a soft navigation faster (hover prefetch, View Transition) | `navigation` (their hooks live there); only shells that list them download them |
 | `@ehtb/agent-ui/shell`, `/navigation` | a shell's definition and the soft navigation plugin | `shell` reaches the runtime and `syncApps`; `navigation` reaches the pages module: only pages that list a shell download them |
 | `@ehtb/agent-ui/pages` | `definePage`, `startPage` and `pageOf`, what every page and generated entry runs | the runtime, hydration, the URL patterns and the server-only and development halves that production builds replace by stubs; the debug panel only through a dynamic `import()` |
 | `@ehtb/agent-ui/resources`, `/url-pattern` | a plugin and the URL pattern matcher | nothing from the runtime (`resources` reaches only `src/messages.js`) |
