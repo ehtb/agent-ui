@@ -111,6 +111,8 @@ export const topics = [
       'withFollow           @ehtb/agent-ui/follow          the follow prop: a dragged row under the pointer (the app fails at mount without it)',
       'withMoves            @ehtb/agent-ui/moves           rows with transition slide to their new place when the list reorders',
       'withNavigation       @ehtb/agent-ui/navigation      in a shell\'s plugins: soft: true links and route.go between its pages',
+      'withPrefetch         @ehtb/agent-ui/prefetch        in a shell\'s plugins after withNavigation: a soft link\'s page is fetched on hover',
+      'withViewTransition   @ehtb/agent-ui/view-transition in a shell\'s plugins after withNavigation: the swap runs as a View Transition',
       'Helpers for writing your own plugin: mountElement (@ehtb/agent-ui/mount-element) to draw into an element; syncApps (@ehtb/agent-ui/sync-apps) to connect two apps.',
       'Your own plugin: (environment) => (api) => { ... }, reads with api.watch, writes with api.dispatch, quiet while api.replaying, returns early when isServerRendering.',
     ].join('\n'),

@@ -12,7 +12,9 @@ export interface NavigationOptions {
 }
 /** What a soft navigation reads from a document's text: the state the page starts from, its entry file and its stylesheets. */
 export function readDocument(text: string): { state: Record<string, any>; entryUrl: string | null; stylesheets: string[] };
-/** The plugin with its parts injectable (tests, unusual hosts). It adds `navigate(href)` to the shell's app. */
+/** Fetches the document of a link as a page load would get it: { text } for a plain page, { reason } for what a soft navigation cannot show in place. A fetch that throws throws. */
+export function fetchPlainDocument(fetchFunction: (url: string, init?: object) => Promise<any>, key: string): Promise<{ text: string; reason?: undefined } | { reason: string; text?: undefined }>;
+/** The plugin with its parts injectable (tests, unusual hosts). It adds `navigate(href)` to the shell's app, and `extendNavigation({ document, swap })` and `softLinkTarget(element)` for the plugins listed after it (`withPrefetch`, `withViewTransition`). */
 export function navigation(options: NavigationOptions): Plugin;
 /** The plugin as a shell lists it: `defineShell({ plugins: [withNavigation] })`. */
 export function withNavigation(environment: { win: any; fetchFunction: any; shellName: string; basePath?: string }): Plugin;

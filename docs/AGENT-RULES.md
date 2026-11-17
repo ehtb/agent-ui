@@ -134,6 +134,8 @@ Everything else external is a plugin, and plugins are optional: a page lists onl
 | `withFollow` | `@ehtb/agent-ui/follow` | the spec uses `follow` |
 | `withMoves` | `@ehtb/agent-ui/moves` | rows with `transition` should slide when the list reorders |
 | `withNavigation` (a shell lists it) | `@ehtb/agent-ui/navigation` | `soft` links and `route.go` between the shell's pages |
+| `withPrefetch` (a shell lists it after `withNavigation`) | `@ehtb/agent-ui/prefetch` | a soft link's page should load on hover (every hover renders a page on the server) |
+| `withViewTransition` (a shell lists it after `withNavigation`) | `@ehtb/agent-ui/view-transition` | the swap of a soft navigation should animate |
 
 A plugin you write:
 

@@ -271,6 +271,8 @@ A review against an open-source release, with the line that the framework is a U
 
 `follow` and the sliding of reordered rows moved out of the runtime into the plugins `withFollow` and `withMoves`, behind two hooks (`api.onReorder`, `api.handleProperty`): only pages that drag or slide download them. The saving is small (0.7 KB raw, 0.26 KB gzip, every other page), so the price had to be small too: a page that uses `follow` without its plugin fails at mount naming the import, rows that would have slid jump with a development warning naming it, and `agent-ui explain plugins` lists every plugin. The enter and leave markers stayed in the runtime, because they decide when a node leaves the DOM.
 
+The hover prefetch and the View Transition of a soft navigation are the plugins `withPrefetch` and `withViewTransition`, behind two hooks of the navigation plugin (`api.extendNavigation`, `api.softLinkTarget`), and a shell lists them or not. They were first built into the navigation and made opt-in because each is a decision the framework should not take for every app: a hover makes the server render a page (a site with expensive pages or many links may not want that), and the default cross-fade also fades the shell that is meant to stay. The prefetch hints the page's entry file as well (`modulepreload`), because the entry is the part of the click that is still waiting after the document has arrived.
+
 `syncApps` was kept after asking whether the shell made it redundant: the shell's `reads` are built on it, and two apps on a page the host owns (`examples/islands`) is the library use it exists for.
 
 ## Deliberate tightenings (October 2026 drift review)

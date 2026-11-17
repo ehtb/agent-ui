@@ -10,12 +10,14 @@ import { deferred, sleep } from './support/helpers.mjs';
 const { startPage, findEntry, currentPage: running } = await import('../src/pages.js');
 const currentPage = () => ({ ...running() }); // a copy: the record is kept current in place, and a test compares before with after
 const { defineShell } = await import('../src/shell.js');
-const { navigation, readDocument } = await import('../src/navigation.js');
+const { navigation, readDocument, fetchPlainDocument } = await import('../src/navigation.js');
+const { prefetch } = await import('../src/prefetch.js');
+const { viewTransition } = await import('../src/view-transition.js');
 const { a, button, div, footer, header, input, main, p, pageSlot, section, span, state, act } = await import('../src/spec.js');
 
 // ---------------------------------------------------------------------------------------------------- a fake browser
 
-const listeners = { click: [], popstate: [], pagehide: [], pageshow: [] };
+const listeners = { click: [], popstate: [], pagehide: [], pageshow: [], pointerover: [] };
 const head = new ShimElement('head');
 const body = new ShimElement('body');
 shimDocument.head = head;
@@ -98,10 +100,15 @@ const byDataId = (id) => find(body, (element) => element.getAttribute('data-id')
 const frame = { state: { cartCount: 0 }, actions: { setCartCount: { args: { count: 'number' }, run: (store, { count }) => store.set('cartCount', count) } } };
 const cart = { state: { lines: [] }, derive: { count: (get) => get('lines').reduce((sum, line) => sum + line.quantity, 0) } };
 const imported = [];
+const clock = { offset: 0 }; // what a test adds to the time withPrefetch reads, to age a document
 const shell = defineShell({
   name: 'main',
   namespaces: { frame },
-  plugins: [({ win, fetchFunction, shellName }) => navigation({ win, fetchFunction, shellName, importModule: async (url) => (imported.push(url), moduleFor[url]?.()), loadStylesheet: async (href) => addStylesheet(href) })],
+  plugins: [
+    ({ win, fetchFunction, shellName }) => navigation({ win, fetchFunction, shellName, importModule: async (url) => (imported.push(url), moduleFor[url]?.()), loadStylesheet: async (href) => addStylesheet(href) }),
+    ({ win, fetchFunction }) => prefetch({ win, fetchFunction, now: () => Date.now() + clock.offset }),
+    ({ win }) => viewTransition({ win }),
+  ],
   reads: [{ watch: ['cart.count'], action: 'frame.setCartCount', args: { count: 'cart.count' } }],
 });
 const shellContent = {
@@ -367,6 +374,287 @@ test('back and forward return to where the visitor was on that entry; a new entr
   const scrollsBefore = scrolls.length;
   for (const listener of [...listeners.pageshow]) listener({ type: 'pageshow', persisted: true });
   assert.deepEqual(scrolls.slice(scrollsBefore), [[0, 45]], 'only a page restored from the cache is scrolled back');
+});
+
+// ---- withPrefetch and withViewTransition: the two plugins that make a swap faster, and what each leaves alone ---------------
+// The site is running (page A showing): the tests here navigate and always come back to page A, which the destroy test
+// below needs, and which stays last. The tests above replaced the answers (the last one serves the documents only),
+// so a test that fetches more than those documents puts the whole router back first.
+const restoreAnswers = () => {
+  answer = async (url) => {
+    if (url in documents) return htmlResponse(documents[url]);
+    if (url === '/missing') return htmlResponse('not found', { ok: false, status: 404 });
+    if (url === '/gone') return htmlResponse('', { redirected: true });
+    throw new Error(`unexpected request ${url}`);
+  };
+};
+
+const hover = (target, extra = {}) => {
+  const event = { type: 'pointerover', target, pointerType: 'mouse', ...extra };
+  for (const listener of [...listeners.pointerover]) listener(event);
+};
+const fetchedCount = (url) => fetched.filter((fetchedUrl) => fetchedUrl === url).length;
+// The tests before this one leave the site wherever they ended (the last one on "/b"): the tests here start from page A.
+const goHome = async () => {
+  if (!byDataId('back')) return;
+  const before = currentPage();
+  click(byDataId('back'));
+  await until(() => currentPage().ui !== before.ui, 'the page to come home');
+};
+
+test('a hover prefetches the document of a soft link, and the click uses it without fetching again', async () => {
+  await goHome();
+  const fetchedBefore = fetchedCount('/b');
+  const before = currentPage();
+  hover(byDataId('to-b'));
+  await until(() => fetchedCount('/b') === fetchedBefore + 1, 'the hover to fetch /b');
+  click(byDataId('to-b'));
+  await until(() => currentPage().ui !== before.ui, 'the page to be replaced');
+  assert.equal(fetchedCount('/b'), fetchedBefore + 1, 'the click did not fetch what the hover brought');
+  const onB = currentPage();
+  click(byDataId('back'));
+  await until(() => currentPage().ui !== onB.ui, 'the page to come back');
+});
+
+test('a failed prefetch is dropped, so the click fetches and falls back as it would without one', async () => {
+  restoreAnswers();
+  await goHome();
+  hover(byDataId('to-missing')); // '/missing' answers 404: the prefetch resolves to nothing and is dropped
+  await until(() => fetchedCount('/missing') >= 1, 'the hover to fetch /missing');
+  const loadsBefore = assigned.length;
+  click(byDataId('to-missing'));
+  await until(() => assigned.length > loadsBefore, 'the page load');
+  assert.match(warnings.at(-1), /the answer is 404/);
+  const fetchedBefore = fetchedCount('/missing');
+  hover(byDataId('to-missing'));
+  await until(() => fetchedCount('/missing') === fetchedBefore + 1, 'a later hover to fetch /missing again');
+});
+
+test('a hover prefetches nothing for a touch pointer, another origin, a link without soft, or another target', async () => {
+  await goHome();
+  const before = fetched.length;
+  hover(byDataId('external')); // another origin
+  hover(byDataId('to-b'), { pointerType: 'touch' }); // a tap is followed by the click
+  hover(byDataId('plain')); // a link without soft: the browser loads it
+  hover(byDataId('new-tab')); // another target
+  await sleep(5);
+  assert.equal(fetched.length, before, JSON.stringify(fetched.slice(before)));
+});
+
+test('the swap runs as one View Transition where the browser has one, and reduced motion skips it', async () => {
+  await goHome();
+  const updates = [];
+  shimDocument.startViewTransition = (update) => {
+    updates.push(update);
+    const result = update();
+    return { updateCallbackDone: Promise.resolve(result), finished: Promise.resolve(result) };
+  };
+  const media = { reduced: false };
+  window.matchMedia = (query) => ({ matches: media.reduced && query.includes('reduce'), media: query });
+  try {
+    hover(byDataId('to-b'));
+    await until(() => fetchedCount('/b') >= 1, 'the hover');
+    const before = currentPage();
+    click(byDataId('to-b'));
+    await until(() => currentPage().ui !== before.ui, 'the page to be replaced');
+    assert.equal(updates.length, 1, 'the swap ran inside one transition');
+    assert.equal(before.ui.destroyed, true, 'and the update did what the swap does');
+
+    media.reduced = true;
+    const onB = currentPage();
+    click(byDataId('back'));
+    await until(() => currentPage().ui !== onB.ui, 'the page to be replaced');
+    assert.equal(updates.length, 1, 'reduced motion: no transition, the swap ran directly');
+    assert.equal(currentPage().entry, before.entry, 'and back home again for the tests that follow');
+  } finally {
+    delete shimDocument.startViewTransition;
+    delete window.matchMedia;
+  }
+});
+
+test('an update that throws inside a View Transition ends in a page load, with the reason', async () => {
+  await goHome();
+  shimDocument.startViewTransition = (update) => {
+    update();
+    throw new Error('the transition broke');
+  };
+  window.matchMedia = () => ({ matches: false });
+  try {
+    const loadsBefore = assigned.length;
+    click(byDataId('to-b'));
+    await until(() => assigned.length > loadsBefore, 'the page load');
+    assert.match(warnings.at(-1), /the transition broke/);
+  } finally {
+    delete shimDocument.startViewTransition;
+    delete window.matchMedia;
+  }
+});
+
+test('a hover whose fetch fails or is cancelled is silent, and the click fetches again and says why', async () => {
+  const rejections = [];
+  const onUnhandled = (reason) => rejections.push(reason);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    await goHome();
+    answer = async (url) => {
+      if (url === '/slow') throw new Error('network down');
+      return htmlResponse(documents[url]);
+    };
+    hover(byDataId('to-slow')); // the fetch of the hover throws: the prefetch resolves to nothing and is dropped
+    await sleep(10);
+    assert.deepEqual(rejections, [], 'the failed hover is not an unhandled rejection');
+    const loadsBefore = assigned.length;
+    click(byDataId('to-slow')); // the click fetches again, and the failure it meets is the one it reports
+    await until(() => assigned.length > loadsBefore, 'the page load');
+    assert.match(warnings.at(-1), /network down/);
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+    restoreAnswers();
+  }
+});
+
+test('a document older than a few seconds is not used: the click fetches what a load would show now, and a hover after that fetches again', async () => {
+  restoreAnswers();
+  await goHome();
+  try {
+    const fetchedBefore = fetchedCount('/b');
+    hover(byDataId('to-b'));
+    await until(() => fetchedCount('/b') === fetchedBefore + 1, 'the hover to fetch /b');
+    clock.offset = 6000; // the visitor took longer than the document stays fresh
+    const before = currentPage();
+    click(byDataId('to-b'));
+    await until(() => currentPage().ui !== before.ui, 'the page to be replaced');
+    assert.equal(fetchedCount('/b'), fetchedBefore + 2, 'the stale document was not used');
+    const onB = currentPage();
+    click(byDataId('back'));
+    await until(() => currentPage().ui !== onB.ui, 'the page to come back');
+
+    clock.offset = 0;
+    hover(byDataId('to-b'));
+    await until(() => fetchedCount('/b') === fetchedBefore + 3, 'a hover to fetch /b');
+    clock.offset = 6000;
+    hover(byDataId('to-b')); // the one in hand is stale: this hover replaces it
+    await until(() => fetchedCount('/b') === fetchedBefore + 4, 'a hover after it went stale to fetch again');
+    clock.offset = 0;
+    const home = currentPage();
+    click(byDataId('to-b')); // the newest hover is fresh again at this clock: taken, not fetched
+    await until(() => currentPage().ui !== home.ui, 'the page to be replaced');
+    assert.equal(fetchedCount('/b'), fetchedBefore + 4);
+    click(byDataId('back'));
+    await until(() => currentPage().ui !== home.ui && byDataId('to-b') !== undefined, 'the page to come back');
+  } finally {
+    clock.offset = 0;
+  }
+});
+
+test('the document a hover brought also gets its entry file hinted to the browser, once', async () => {
+  restoreAnswers();
+  await goHome();
+  const savedC = documents['/c'];
+  documents['/c'] = documentOf({ entry: '/assets/c.js', stylesheets: ['/assets/shared.css'] }); // an earlier test left /c without a page script
+  const hints = () => head.childNodes.filter((node) => node.localName === 'link' && node.getAttribute('rel') === 'modulepreload').map((node) => node.getAttribute('href'));
+  const hintsOfC = () => hints().filter((href) => href === 'http://localhost/assets/c.js');
+  assert.equal(hintsOfC().length, 0, 'the entry of /c is not hinted before a hover');
+  hover(byDataId('to-c'));
+  await until(() => hintsOfC().length === 1, 'the entry of /c to be hinted');
+  clock.offset = 6000; // stale: the next hover fetches again, and the entry is not hinted twice
+  const fetchedBefore = fetchedCount('/c');
+  hover(byDataId('to-c'));
+  await until(() => fetchedCount('/c') === fetchedBefore + 1, 'the second hover to fetch');
+  await sleep(5);
+  clock.offset = 0;
+  documents['/c'] = savedC;
+  assert.equal(hintsOfC().length, 1);
+});
+
+test('a second navigation wins while the first waits to be shown: the stale update swaps nothing in', async () => {
+  restoreAnswers();
+  await goHome();
+  const queued = [];
+  shimDocument.startViewTransition = (update) => {
+    queued.push(update);
+    return { updateCallbackDone: Promise.resolve() };
+  };
+  window.matchMedia = () => ({ matches: false });
+  try {
+    const before = currentPage();
+    const loadsBefore = assigned.length;
+    click(byDataId('to-b'));
+    await until(() => queued.length === 1, 'the first navigation to ask for its transition');
+    click(byDataId('to-home')); // the visitor clicked again before the first was shown: this navigation is the newest
+    await until(() => queued.length === 2, 'the second navigation to ask for its transition');
+    queued[0](); // the stale update (page B) runs first
+    assert.equal(currentPage().ui, before.ui, 'it swapped nothing in: the page that was showing keeps showing');
+    queued[1]();
+    assert.notEqual(currentPage().ui, before.ui, 'the newest navigation is shown');
+    assert.equal(currentPage().entry, before.entry, 'and it is page A, not the stale page B');
+    assert.equal(assigned.length, loadsBefore, 'and the stale one did not turn into a page load');
+  } finally {
+    delete shimDocument.startViewTransition;
+    delete window.matchMedia;
+  }
+});
+
+// A stand-in for the shell's app, for the plugins that are checked on their own: what they register, and what they refuse.
+const standInApp = () => {
+  const disposers = [];
+  return { destroyed: false, dispatch() {}, onDestroy: (dispose) => disposers.push(dispose), destroy: () => disposers.forEach((dispose) => dispose()) };
+};
+const environment = () => ({ win: window, fetchFunction: window.fetch, shellName: 'main' });
+
+test('the navigation alone listens to no hover and runs the swap directly: prefetch and View Transition are opt-in plugins', async () => {
+  const app = standInApp();
+  const hoversBefore = listeners.pointerover.length;
+  navigation(environment())(app);
+  assert.equal(listeners.pointerover.length, hoversBefore, 'a navigation without withPrefetch does not listen to hovers');
+  assert.equal(typeof app.navigate, 'function');
+  assert.equal(typeof app.softLinkTarget, 'function');
+  app.destroy();
+});
+
+test('withPrefetch and withViewTransition refuse a shell without a navigation before them, naming the fix', () => {
+  for (const [plugin, name] of [[prefetch, 'withPrefetch'], [viewTransition, 'withViewTransition']]) {
+    assert.throws(
+      () => plugin(environment())(standInApp()),
+      new RegExp(`^Error: ${name}: the shell has no navigation to extend\\. List withNavigation before ${name} in the plugins of defineShell: plugins: \\[withNavigation, ${name}\\]$`),
+    );
+  }
+});
+
+test('extendNavigation takes document and swap functions only, and says what is wrong with anything else', () => {
+  const app = standInApp();
+  navigation(environment())(app);
+  assert.throws(() => app.extendNavigation({ swpa: () => {} }), /extendNavigation: unknown key "swpa"\. Allowed keys: document, swap/);
+  assert.throws(() => app.extendNavigation({ document: 'yes' }), /extendNavigation: document is string, not a function\. Give document a function, or leave it out/);
+  app.destroy();
+});
+
+test('softLinkTarget reads a soft link the way the click does: key, hash, and whether it leads to the page showing', () => {
+  const app = standInApp();
+  navigation(environment())(app);
+  const link = (attributes) => {
+    const element = new ShimElement('a');
+    element.setAttribute('data-soft', '');
+    for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, value);
+    return element;
+  };
+  assert.deepEqual(app.softLinkTarget(link({ href: '/b?x=1#top' })), { sitePath: '/b', search: '?x=1', hash: '#top', key: '/b?x=1', here: false });
+  assert.equal(app.softLinkTarget(link({ href: window.location.pathname + window.location.search })).here, true);
+  assert.equal(app.softLinkTarget(link({ href: 'https://example.com/' })), null);
+  assert.equal(app.softLinkTarget(link({ href: '/b', target: '_blank' })), null);
+  assert.equal(app.softLinkTarget(link({ href: '/b', download: '' })), null);
+  assert.equal(app.softLinkTarget(link({})), null);
+  assert.equal(app.softLinkTarget(new ShimElement('a')), null, 'a link not marked soft is the browser\'s');
+  app.destroy();
+});
+
+test('fetchPlainDocument answers the text of a plain page and the reason for anything else', async () => {
+  const plain = await fetchPlainDocument(async () => htmlResponse('<p>x</p>'), '/x');
+  assert.deepEqual(plain, { text: '<p>x</p>' });
+  assert.deepEqual(await fetchPlainDocument(async () => htmlResponse('', { ok: false, status: 404 }), '/x'), { reason: 'the answer is 404, not a plain page' });
+  assert.deepEqual(await fetchPlainDocument(async () => htmlResponse('', { redirected: true }), '/x'), { reason: 'the answer is a redirect, not a plain page' });
+  assert.deepEqual(await fetchPlainDocument(async () => ({ ...htmlResponse('x'), headers: { get: () => 'application/json' } }), '/x'), { reason: 'the answer is not HTML' });
+  await assert.rejects(fetchPlainDocument(async () => { throw new Error('offline'); }, '/x'), /offline/);
 });
 
 test('destroying the shell removes the listeners of the navigation plugin, and a navigation still waiting changes nothing when it ends', async () => {

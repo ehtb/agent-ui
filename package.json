@@ -83,6 +83,14 @@
       "types": "./src/navigation.d.ts",
       "default": "./src/navigation.js"
     },
+    "./prefetch": {
+      "types": "./src/prefetch.d.ts",
+      "default": "./src/prefetch.js"
+    },
+    "./view-transition": {
+      "types": "./src/view-transition.d.ts",
+      "default": "./src/view-transition.js"
+    },
     "./pages": {
       "types": "./src/pages.d.ts",
       "default": "./src/pages.js"

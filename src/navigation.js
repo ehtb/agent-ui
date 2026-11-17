@@ -4,6 +4,11 @@
 //
 //   export const shell = defineShell({ name: 'main', plugins: [withNavigation], ... });     // src/shell.js
 //
+// Two plugins make it faster than a load, and the shell lists each one it wants after this one (`plugins: [withNavigation, withPrefetch,
+// withViewTransition]`): `withPrefetch` (src/prefetch.js) fetches a link's document when the visitor hovers it, and `withViewTransition`
+// (src/view-transition.js) runs the visible swap as one View Transition. Neither is part of this file; they use its two hooks,
+// `api.extendNavigation({ document, swap })` and `api.softLinkTarget(element)`, below.
+//
 // What happens, in this order, and what is the same as a page load:
 //   1. The document of the link is fetched (the same prerendered file or server render a browser would get). The state the server
 //      embedded in it is the state the next page starts from, so the page that starts is the page a load would show.
@@ -36,7 +41,8 @@
 // page load get the base, `route.arrive` and the fetch (which adds the base itself) get the path without it, and a link outside the
 // base is the browser's.
 //
-// The plugin adds `navigate(href)` to the shell's app, which is what route.go calls. `navigation(options)` is the plugin with its parts
+// The plugin adds `navigate(href)` to the shell's app, which is what route.go calls, and the two hooks for the plugins that go with it
+// (`extendNavigation`, `softLinkTarget`). `navigation(options)` is the plugin with its parts
 // injectable (`importModule`, `loadStylesheet`, `fetchFunction`), for tests and for hosts that load modules their own way.
 import { browserEnvironment } from './hydrate.js';
 import { readModuleScript, readStateScript, readStylesheets } from './document-markup-reader.js';
@@ -45,11 +51,27 @@ import { currentPage, findEntry } from './pages.js';
 import { applyHead } from './head.js';
 import { readHead } from './head-reader.js';
 import { withBase, withoutBase } from './base-path.js';
+import { fail } from './messages.js';
 
 // What a soft navigation needs from a document's text (written by server/document.mjs and build/write-site.mjs, with the writers of
 // src/document-markup.js and read by src/document-markup-reader.js): the state the page starts from ({} when the document was not
 // rendered with one), the file of the page's entry, and the page's stylesheets.
 export const readDocument = (text) => ({ state: readStateScript(text), entryUrl: readModuleScript(text), stylesheets: readStylesheets(text) });
+
+// Fetches the document of a link the way a page load would get it. Answers { text } for a plain page and { reason } for anything a
+// soft navigation cannot show in place (the reason is what the console says when it loads the page normally); a fetch that throws
+// throws. The one definition of "a plain page", used by the navigation and by withPrefetch.
+export const fetchPlainDocument = async (fetchFunction, key) => {
+  const response = await fetchFunction(key, { headers: { accept: 'text/html' } });
+  if (!response.ok || response.redirected) return { reason: `the answer is ${response.redirected ? 'a redirect' : response.status}, not a plain page` };
+  if (!/text\/html/.test(response.headers.get('content-type') ?? '')) return { reason: 'the answer is not HTML' };
+  const text = await response.text();
+  if (typeof text !== 'string') return { reason: 'the answer has no text' };
+  return { text };
+};
+
+// What a plugin may add to the navigation (api.extendNavigation): where a document comes from, and how the swap is run.
+const EXTENSION_KEYS = ['document', 'swap'];
 
 // Replaces the page that runs with the one `entry` defines, from the state its HTML carried. `currentPage()` (src/pages.js) is the record
 // of what runs in this document; it is kept current here.
@@ -91,6 +113,18 @@ export const navigation = ({ win, fetchFunction, importModule = (url) => import(
   let shownStylesheets = new Set(linkElements().map((element) => element.getAttribute('href'))); // what the page that is showing brought
   let shownUrl = `${win.location.pathname}${win.location.search}`;
   let latest = 0; // a newer navigation makes an older one that is still waiting stop
+  const documentSources = []; // from withPrefetch and the like: (key) => text | null, asked before the document is fetched
+  const swapRunners = []; // from withViewTransition and the like: (update) => promise, which must call update
+  api.extendNavigation = (extension) => {
+    for (const key of Object.keys(extension ?? {})) {
+      if (!EXTENSION_KEYS.includes(key)) fail('extendNavigation', `unknown key "${key}"`, `Allowed keys: ${EXTENSION_KEYS.join(', ')}`);
+    }
+    for (const key of EXTENSION_KEYS) {
+      if (extension[key] !== undefined && typeof extension[key] !== 'function') fail('extendNavigation', `${key} is ${typeof extension[key]}, not a function`, `Give ${key} a function, or leave it out`);
+    }
+    if (extension.document) documentSources.push(extension.document);
+    if (extension.swap) swapRunners.push(extension.swap);
+  };
   // Scroll positions by history entry. The entry that shows gets a key now if it has none (a first load).
   const positions = new Map();
   if ('scrollRestoration' in win.history) win.history.scrollRestoration = 'manual';
@@ -139,11 +173,19 @@ export const navigation = ({ win, fetchFunction, importModule = (url) => import(
     const sitePath = withoutBase(basePath, url.pathname);
     if (sitePath === null) return hardLoad(wireHref, `it is outside the base path ${basePath}`);
     try {
-      const response = await fetchFunction(`${sitePath}${url.search}`, { headers: { accept: 'text/html' } });
-      if (number !== latest) return;
-      if (!response.ok || response.redirected) return hardLoad(wireHref, `the answer is ${response.redirected ? 'a redirect' : response.status}, not a plain page`);
-      if (!/text\/html/.test(response.headers.get('content-type') ?? '')) return hardLoad(wireHref, 'the answer is not HTML');
-      const text = await response.text();
+      const key = `${sitePath}${url.search}`;
+      let text = null;
+      for (const source of documentSources) {
+        text = (await source(key)) ?? null; // a document brought ahead of the click; null: fetch it now
+        if (number !== latest) return;
+        if (typeof text === 'string') break;
+      }
+      if (typeof text !== 'string') {
+        const answer = await fetchPlainDocument(fetchFunction, key);
+        if (number !== latest) return;
+        if (answer.reason) return hardLoad(wireHref, answer.reason);
+        text = answer.text;
+      }
       const { state, entryUrl, stylesheets } = readDocument(text);
       if (number !== latest) return;
       if (!entryUrl) return hardLoad(wireHref, 'the document names no page script');
@@ -165,34 +207,47 @@ export const navigation = ({ win, fetchFunction, importModule = (url) => import(
       // An entry made before this plugin ran (or by the site) gets its key now, so leaving it remembers its position.
       if (!historyState(win)[ENTRY_KEY]) win.history.replaceState?.({ ...historyState(win), [ENTRY_KEY]: newEntryKey() }, '');
       const arrivedKey = historyState(win)[ENTRY_KEY] ?? null;
-      applyHead(document, readHead(text)); // the head of the next page, as a load would give it; a page that follows the state (withHead) refines it
-      showPage(entry, state);
-      for (const element of linkElements()) if (!stylesheets.includes(element.getAttribute('href')) && shownStylesheets.has(element.getAttribute('href'))) element.remove();
-      shownStylesheets = new Set(stylesheets);
-      shownUrl = target;
-      api.dispatch('route.arrive', { path: sitePath });
-      const { slot } = currentPage();
-      // A page load announces itself with a new document title. A swap has to say it too: an element whose HTML id is
-      // `agent-ui-announcer` (a live region, usually visually hidden by the site's CSS) gets the new title; without one,
-      // the focused page slot carries the title as its accessible name, which a screen reader reads when it takes the focus.
-      const title = document.title || 'Page changed';
-      const announcer = document.getElementById?.('agent-ui-announcer');
-      if (announcer) {
-        // A real element and the server DOM both have replaceChildren; assigning textContent is the browser shorthand.
-        if (typeof announcer.replaceChildren === 'function') announcer.replaceChildren(title);
-        else announcer.textContent = title;
+      // The visible part of the swap, as one update. A plugin may run it its own way (withViewTransition animates it); it must call
+      // `update`, and an update that throws reaches the catch below and the page load that follows, because that is what a failed
+      // swap means. The update may run later than this point (an animation first captures the old page), so it makes sure it is
+      // still the newest navigation's.
+      const update = () => {
+        if (number !== latest) return; // a newer navigation took over while this one waited to be shown: its page is the one to swap in
+        applyHead(document, readHead(text)); // the head of the next page, as a load would give it; a page that follows the state (withHead) refines it
+        showPage(entry, state);
+        for (const element of linkElements()) if (!stylesheets.includes(element.getAttribute('href')) && shownStylesheets.has(element.getAttribute('href'))) element.remove();
+        shownStylesheets = new Set(stylesheets);
+        shownUrl = target;
+        api.dispatch('route.arrive', { path: sitePath });
+        const { slot } = currentPage();
+        // A page load announces itself with a new document title. A swap has to say it too: an element whose HTML id is
+        // `agent-ui-announcer` (a live region, usually visually hidden by the site's CSS) gets the new title; without one,
+        // the focused page slot carries the title as its accessible name, which a screen reader reads when it takes the focus.
+        const title = document.title || 'Page changed';
+        const announcer = document.getElementById?.('agent-ui-announcer');
+        if (announcer) {
+          // A real element and the server DOM both have replaceChildren; assigning textContent is the browser shorthand.
+          if (typeof announcer.replaceChildren === 'function') announcer.replaceChildren(title);
+          else announcer.textContent = title;
+        }
+        slot.setAttribute('tabindex', '-1');
+        slot.setAttribute('role', 'region');
+        slot.setAttribute('aria-label', title);
+        slot.focus?.({ preventScroll: true });
+        shownKey = arrivedKey;
+        // Back or forward to an entry this tab has seen returns to where the visitor was; a new entry starts at the #hash or the top.
+        const returnTo = push ? null : (positions.get(arrivedKey) ?? historyState(win)[SCROLL_KEY] ?? null);
+        const anchor = url.hash.length > 1 ? document.getElementById?.(decodeURIComponent(url.hash.slice(1))) : null;
+        if (returnTo) win.scrollTo?.(returnTo.x, returnTo.y);
+        else if (anchor) anchor.scrollIntoView?.();
+        else win.scrollTo?.(0, 0);
+      };
+      let run = update;
+      for (const swap of swapRunners) {
+        const inner = run;
+        run = () => swap(inner);
       }
-      slot.setAttribute('tabindex', '-1');
-      slot.setAttribute('role', 'region');
-      slot.setAttribute('aria-label', title);
-      slot.focus?.({ preventScroll: true });
-      shownKey = arrivedKey;
-      // Back or forward to an entry this tab has seen returns to where the visitor was; a new entry starts at the #hash or the top.
-      const returnTo = push ? null : (positions.get(arrivedKey) ?? historyState(win)[SCROLL_KEY] ?? null);
-      const anchor = url.hash.length > 1 ? document.getElementById?.(decodeURIComponent(url.hash.slice(1))) : null;
-      if (returnTo) win.scrollTo?.(returnTo.x, returnTo.y);
-      else if (anchor) anchor.scrollIntoView?.();
-      else win.scrollTo?.(0, 0);
+      await run();
     } catch (error) {
       if (number !== latest) return; // an older or abandoned navigation that fails has nothing left to say
       hardLoad(wireHref, error.message);
@@ -200,19 +255,28 @@ export const navigation = ({ win, fetchFunction, importModule = (url) => import(
   };
   api.navigate = navigate;
 
+  // What a soft link at `element` leads to, or null when the browser keeps it (not a link marked soft, another target, `download`, no
+  // href, another origin, outside the base path). `key` is the site's path and search (what the fetch takes), `here` is true when that
+  // is the page showing. The one reading of a soft link: the click uses it, and so does withPrefetch on a hover.
+  api.softLinkTarget = (element) => {
+    const link = element?.closest?.('[data-soft]');
+    if (!link || link.localName !== 'a') return null;
+    if ((link.getAttribute('target') ?? '_self') !== '_self' || link.hasAttribute('download')) return null;
+    if (!link.hasAttribute('href')) return null;
+    const url = new URL(link.getAttribute('href'), win.location.href);
+    if (url.origin !== win.location.origin) return null;
+    const sitePath = withoutBase(basePath, url.pathname); // the link was written with the base (src/ui.js); outside it, the browser loads it
+    if (sitePath === null) return null;
+    return { sitePath, search: url.search, hash: url.hash, key: `${sitePath}${url.search}`, here: `${url.pathname}${url.search}` === shownUrl };
+  };
+
   const onClick = (event) => {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    const link = event.target?.closest?.('[data-soft]');
-    if (!link || link.localName !== 'a') return;
-    if ((link.getAttribute('target') ?? '_self') !== '_self' || link.hasAttribute('download')) return;
-    if (!link.hasAttribute('href')) return;
-    const url = new URL(link.getAttribute('href'), win.location.href);
-    if (url.origin !== win.location.origin) return;
-    if (`${url.pathname}${url.search}` === shownUrl && url.hash) return; // a place on this page: the browser scrolls
-    const sitePath = withoutBase(basePath, url.pathname); // the link was written with the base (src/ui.js)
-    if (sitePath === null) return; // outside the base: another site on this origin, which the browser loads
+    const link = api.softLinkTarget(event.target);
+    if (!link) return;
+    if (link.here && link.hash) return; // a place on this page: the browser scrolls
     event.preventDefault();
-    navigate(`${sitePath}${url.search}${url.hash}`);
+    navigate(`${link.sitePath}${link.search}${link.hash}`);
   };
   const onPopState = () => {
     const target = `${win.location.pathname}${win.location.search}`;

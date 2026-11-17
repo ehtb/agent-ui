@@ -157,7 +157,7 @@ export default ({ dev = false, validator } = {}) => ({ ...frameworkBuildOptions(
 });
 
 test('soft navigation below a base path fetches the site path, pushes the address with the base, and leaves a link outside the base to the browser', async () => {
-  const listeners = { click: [], popstate: [], pagehide: [], pageshow: [] };
+  const listeners = { click: [], popstate: [], pagehide: [], pageshow: [], pointerover: [] };
   const pushed = [];
   const assigned = [];
   const fetched = [];
