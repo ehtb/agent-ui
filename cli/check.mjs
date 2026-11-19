@@ -11,7 +11,7 @@
 // content are still validated as a build does, and it is mounted at a sample URL to find what only a mount finds.
 //
 // It also reads every module the pages' entries reach the way the bundler does (build/module-graph.mjs), because the bundler's
-// rules for the source are found while a build reads the files, not when Node imports them: a re-export or `export *`, a default
+// rules for the source are found while a build reads the files, not when Node imports them: an `export *`, a default
 // import or export in the project's own files, an import that does not resolve and an import cycle are reported with the file and
 // line, as `agent-ui build` and `agent-ui dev` would refuse them.
 //

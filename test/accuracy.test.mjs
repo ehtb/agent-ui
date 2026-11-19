@@ -341,20 +341,20 @@ test('agent-ui check reports what the bundler refuses in the source, once per fi
   const { checkProject } = await import('../cli/check.mjs');
   const project = copyFixture('pages-site');
   try {
-    // A re-export in a module two pages share, and a second broken module under one of them: one read of the graph reports both.
+    // `export *` in a module two pages share, and a second broken module under one of them: one read of the graph reports both.
     project.write('pages/parts.js', "export const title = 'Home';\n");
-    project.write('pages/shared.js', "// The words the pages share.\nexport { title } from './parts.js';\n");
+    project.write('pages/shared.js', "// The words the pages share.\nexport * from './parts.js';\n");
     project.write('pages/view.js', "import { title } from './shared.js';\n\nexport const view = { tag: 'main', id: 'home', children: [{ tag: 'h1', id: 'home-title', children: title }] };\n");
     project.write('pages/counted/broken.js', "export * from '../shared.js';\n");
     project.write('pages/counted/view.js', `import '../shared.js';\nimport './broken.js';\n\n${project.read('pages/counted/view.js')}`);
     const config = await loadConfig({ root: project.root, mode: { dev: true } });
     const { problems } = await checkProject({ config, root: project.root });
-    const refused = problems.filter((problem) => /re-exports are not supported/.test(problem));
+    const refused = problems.filter((problem) => /"export \*" is not supported/.test(problem));
     assert.deepEqual(refused.map((problem) => problem.split(': ')[0]).sort(), ['pages/counted/broken.js:1', 'pages/shared.js:2'], JSON.stringify(problems));
-    assert.match(refused[0], /Export named values: export const name = \.\.\./);
+    assert.match(refused[0], /List the names: export \{ a, b \} from '\.\/x\.js'/);
 
     // Once fixed, the same project has no problem of the source.
-    project.write('pages/shared.js', "import { title as homeTitle } from './parts.js';\n\nexport const title = homeTitle;\n");
+    project.write('pages/shared.js', "export { title } from './parts.js';\n");
     project.write('pages/counted/broken.js', "import { title } from '../shared.js';\n\nexport const other = title;\n");
     const fixed = await checkProject({ config: await loadConfig({ root: project.root, mode: { dev: true } }), root: project.root });
     assert.deepEqual(fixed.problems.filter((problem) => /^pages\/(?:shared|counted\/broken)\.js/.test(problem)), []);

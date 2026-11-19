@@ -239,8 +239,8 @@ test('default imports and exports are accepted in package files only', () => {
   assert.deepEqual([...parsePackage('// export default 1;\nexport const a = 1;').exportedBindings], [['a', 'a']]);
 
   // What a package may not do is the same as for project files.
-  assert.throws(() => parsePackage('export * from "./a.js";'), /node_modules\/pkg\/index\.js:1: "export \*" and re-exports are not supported/);
-  assert.throws(() => parsePackage('export { default } from "./a.js";'), /re-exports are not supported/);
+  assert.throws(() => parsePackage('export * from "./a.js";'), /node_modules\/pkg\/index\.js:1: "export \*" is not supported\. List the names: export \{ a, b \} from '\.\/x\.js'/);
+  assert.throws(() => parsePackage('export * as all from "./a.js";'), /"export \*" is not supported/);
   assert.throws(() => parsePackage('export let counter = 0;'), /"export let counter" is not supported/);
   assert.throws(() => parsePackage('import thing from "./a.css";'), /a stylesheet import cannot have bindings/);
 
@@ -366,7 +366,10 @@ test('unsupported syntax and invalid graphs fail with a clear BuildError naming 
   expectBuildError({ 'other.js': 'import "./main.js";' }, /import cycle: main\.js -> other\.js -> main\.js/);
   expectBuildError({ 'other.js': 'import thing from "./x.js";' }, /other\.js:\d+: default imports are not supported/);
   expectBuildError({ 'other.js': 'export default 1;' }, /other\.js:\d+: default exports/);
-  expectBuildError({ 'other.js': 'export * from "./x.js";' }, /re-exports are not supported/);
+  expectBuildError({ 'other.js': 'export * from "./x.js";' }, /other\.js:1: "export \*" is not supported\. List the names/);
+  expectBuildError({ 'other.js': 'export { a } from "./a.css";', 'a.css': 'p { color: red; }' }, /other\.js:1: a stylesheet cannot be re-exported \(\.\/a\.css\)/);
+  expectBuildError({ 'other.js': 'export { a as default } from "./x.js";', 'x.js': 'export const a = 1;' }, /other\.js:1: default exports are not supported in the project's own files/);
+  expectBuildError({ 'other.js': 'export { a } from "./x.js";\nexport const a = 1;', 'x.js': 'export const a = 1;' }, /other\.js:2: duplicate export a/);
   expectBuildError({ 'other.js': 'export let counter = 0;' }, /other\.js:\d+: "export let counter" is not supported/);
   expectBuildError({ 'other.js': 'export const { a, b } = {};' }, /destructuring exports/);
   expectBuildError({ 'other.js': 'import { x } from "lit";' }, /other\.js:\d+: cannot find package "lit".*Install it.*or import a relative file/);
@@ -721,6 +724,143 @@ test('publicDir refuses a symbolic link: the folder is copied as it is, and a li
   try {
     symlinkSync(join(project.projectRoot, 'secret.txt'), join(project.projectRoot, 'public/linked.txt'));
     assert.throws(() => build({ projectRoot: project.projectRoot, entries: [{ name: 'main', path: 'main.js' }], publicDir: 'public', outDir: 'out' }), /publicDir: .*linked\.txt is a symbolic link\. .* Put the file itself in the folder/);
+  } finally {
+    project.cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------------------------------- re-exports
+
+test('a named re-export is an import and an export of the same name, with the line it was written on', () => {
+  const parse = (sourceText, inPackage = false) => parseModule({ path: 'ui/index.js', sourceText, inPackage, resolveImport: (specifier) => specifier.replace(/^\.\//, 'ui/') });
+  const barrel = parse("// The components.\nexport { Button } from './button.js';\nexport {\n  Card as Panel,\n  Badge,\n} from './card.js';\nexport const own = 1;");
+  assert.deepEqual(barrel.staticDependencies, ['ui/button.js', 'ui/card.js']);
+  assert.deepEqual(barrel.importStatements, ['const { Button: reexport$Button } = ⟦module:ui/button.js⟧;', 'const { Card: reexport$Panel, Badge: reexport$Badge } = ⟦module:ui/card.js⟧;']);
+  assert.deepEqual([...barrel.exportedBindings], [['Button', 'reexport$Button'], ['Panel', 'reexport$Panel'], ['Badge', 'reexport$Badge'], ['own', 'own']]);
+  assert.deepEqual([...barrel.reexports], [['Button', { path: 'ui/button.js', name: 'Button' }], ['Panel', { path: 'ui/card.js', name: 'Card' }], ['Badge', { path: 'ui/card.js', name: 'Badge' }]]);
+  assert.equal(barrel.body, '// The components.\n\n\n\n\n\nconst own = 1;', 'the statements are gone and their lines are left');
+  assert.equal(barrel.firstLine + barrel.body.split('\n').length - 1, 7, 'the last line of the body is line 7 of the source');
+  assert.deepEqual([...parse("export { default as Thing, other } from './thing.js';", true).exportedBindings], [['Thing', 'reexport$Thing'], ['other', 'reexport$other']]);
+  assert.deepEqual(parse("// export { x } from './x.js';\nconst text = \"export { y } from './y.js';\";").staticDependencies, [], 'a comment or a string is not a statement');
+});
+
+test('an importer of a re-exported name is sent to the module that defines it; the others the module re-exports stay out of the page', () => {
+  const project = createProject({
+    'main.js': 'import { Button } from "./ui/index.js";\nglobalThis.shown = Button();',
+    'ui/index.js': 'export { Button } from "./button.js";\nexport { Card } from "./card.js";',
+    'ui/button.js': 'export const Button = () => "button";',
+    'ui/card.js': 'export const Card = () => "card";',
+  });
+  try {
+    const { chunks } = build({ projectRoot: project.projectRoot, entries: [{ name: 'main', path: 'main.js' }], outDir: 'out' });
+    assert.deepEqual(Object.values(chunks).flatMap((chunk) => chunk.modules).sort(), ['main.js', 'ui/button.js'], 'neither the barrel nor the card is in the page');
+  } finally {
+    project.cleanup();
+  }
+});
+
+test('a name that is renamed on the way, and a chain of modules that re-export, are followed to the definition', async () => {
+  const project = createProject({
+    'main.js': 'import { Primary as Main, Card } from "./ui/index.js";\nglobalThis.shown = [Main(), Card()].join();',
+    'ui/index.js': 'export { Action as Primary } from "./actions.js";\nexport { Card } from "./card.js";',
+    'ui/actions.js': 'export { Button as Action } from "./button.js";',
+    'ui/button.js': 'export const Button = () => "button";',
+    'ui/card.js': 'export const Card = () => "card";',
+  });
+  try {
+    const { chunks, outDir } = build({ projectRoot: project.projectRoot, entries: [{ name: 'main', path: 'main.js' }], outDir: 'out' });
+    assert.deepEqual(Object.values(chunks).flatMap((chunk) => chunk.modules).sort(), ['main.js', 'ui/button.js', 'ui/card.js']);
+    const entry = Object.values(chunks).find((chunk) => chunk.modules.includes('main.js'));
+    delete globalThis.shown;
+    await import(pathToFileURL(join(project.projectRoot, 'out', entry.javascript)).href);
+    assert.equal(globalThis.shown, 'button,card');
+    delete globalThis.shown;
+  } finally {
+    project.cleanup();
+  }
+});
+
+test('a module that is in the page has every name it re-exports: a namespace, a side-effect import, a dynamic import and an import of its own name', async () => {
+  const files = {
+    'ui/index.js': 'export { Button } from "./button.js";\nexport { Card } from "./card.js";\nexport const own = () => "own";',
+    'ui/button.js': 'export const Button = () => "button";',
+    'ui/card.js': 'export const Card = () => "card";',
+  };
+  const modulesOf = (main) => {
+    const project = createProject({ 'main.js': main, ...files });
+    try {
+      const { chunks } = build({ projectRoot: project.projectRoot, entries: [{ name: 'main', path: 'main.js' }], outDir: 'out' });
+      return Object.values(chunks).flatMap((chunk) => chunk.modules).sort();
+    } finally {
+      project.cleanup();
+    }
+  };
+  const all = ['main.js', 'ui/button.js', 'ui/card.js', 'ui/index.js'];
+  assert.deepEqual(modulesOf('import * as ui from "./ui/index.js";\nglobalThis.shown = ui.Button();'), all, 'a namespace is the whole module');
+  assert.deepEqual(modulesOf('import "./ui/index.js";'), all, 'a side-effect import runs the whole module');
+  assert.deepEqual(modulesOf('import { own } from "./ui/index.js";\nglobalThis.shown = own();'), all, 'its own name is in it');
+  assert.deepEqual(modulesOf('import { own, Button } from "./ui/index.js";\nglobalThis.shown = [own(), Button()];'), all, 'one import of its own and one of a re-export: the module is there, and Button is read from it');
+  assert.deepEqual(modulesOf('globalThis.lazy = () => import("./ui/index.js");'), all, 'a dynamic import loads the whole module');
+});
+
+test('what a module that is in the page exports is complete: a namespace of a re-exporting module has the re-exported names', async () => {
+  const project = createProject({
+    'main.js': 'import * as ui from "./ui/index.js";\nglobalThis.shown = [ui.Button(), ui.Panel(), ui.own()].join();',
+    'ui/index.js': 'export { Button } from "./button.js";\nexport { Card as Panel } from "./card.js";\nexport const own = () => "own";',
+    'ui/button.js': 'export const Button = () => "button";',
+    'ui/card.js': 'export const Card = () => "card";',
+  });
+  try {
+    const { chunks } = build({ projectRoot: project.projectRoot, entries: [{ name: 'main', path: 'main.js' }], outDir: 'out' });
+    const entry = Object.values(chunks).find((chunk) => chunk.modules.includes('main.js'));
+    delete globalThis.shown;
+    await import(pathToFileURL(join(project.projectRoot, 'out', entry.javascript)).href);
+    assert.equal(globalThis.shown, 'button,card,own');
+    delete globalThis.shown;
+  } finally {
+    project.cleanup();
+  }
+});
+
+test('a barrel that two components import from does not make a cycle: each is sent to the module that defines what it uses', () => {
+  const project = createProject({
+    'main.js': 'import { Card } from "./ui/index.js";\nglobalThis.shown = Card();',
+    'ui/index.js': 'export { Button } from "./button.js";\nexport { Card } from "./card.js";',
+    'ui/button.js': 'export const Button = () => "button";',
+    'ui/card.js': 'import { Button } from "./index.js";\nexport const Card = () => `card+${Button()}`;',
+  });
+  try {
+    const { chunks } = build({ projectRoot: project.projectRoot, entries: [{ name: 'main', path: 'main.js' }], outDir: 'out' });
+    assert.deepEqual(Object.values(chunks).flatMap((chunk) => chunk.modules).sort(), ['main.js', 'ui/button.js', 'ui/card.js']);
+  } finally {
+    project.cleanup();
+  }
+});
+
+test('a cycle that does not go through a name the barrel re-exports is still reported, and a barrel that cannot be read is reported once with its own message', () => {
+  const expectError = (files, pattern) => {
+    const project = createProject({ 'main.js': 'import { A } from "./ui/index.js";', ...files });
+    try {
+      assert.throws(() => build({ projectRoot: project.projectRoot, entries: [{ name: 'main', path: 'main.js' }], outDir: 'out' }), (error) => error instanceof BuildError && pattern.test(error.message));
+    } finally {
+      project.cleanup();
+    }
+  };
+  expectError({ 'ui/index.js': 'export { A } from "./a.js";', 'ui/a.js': 'import { B } from "./b.js";\nexport const A = B;', 'ui/b.js': 'import { A } from "./a.js";\nexport const B = A;' }, /import cycle: ui\/a\.js -> ui\/b\.js -> ui\/a\.js/);
+  expectError({ 'ui/index.js': 'export { A } from "./a.js";\nexport * from "./b.js";', 'ui/a.js': 'export const A = 1;' }, /ui\/index\.js:2: "export \*" is not supported/);
+  expectError({ 'ui/index.js': 'export { A } from "./missing.js";' }, /ui\/index\.js:1: cannot find "\.\/missing\.js"/);
+});
+
+test('a re-export in a file of a package is followed like one in the project', () => {
+  const project = createProject({
+    'main.js': 'import { b } from "pkg";\nglobalThis.shown = b;',
+    'node_modules/pkg/package.json': '{"name":"pkg","type":"module","main":"index.js"}',
+    'node_modules/pkg/index.js': 'export { a, b } from "./parts.js";',
+    'node_modules/pkg/parts.js': 'export const a = 1;\nexport const b = 2;',
+  });
+  try {
+    const { chunks } = build({ projectRoot: project.projectRoot, entries: [{ name: 'main', path: 'main.js' }], outDir: 'out' });
+    assert.deepEqual(Object.values(chunks).flatMap((chunk) => chunk.modules).sort(), ['main.js', 'node_modules/pkg/parts.js']);
   } finally {
     project.cleanup();
   }

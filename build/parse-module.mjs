@@ -9,11 +9,14 @@
 //   import('./file.js')                          dynamic import with a string literal (becomes a lazy chunk)
 //   export const|function|class name ...         export declarations
 //   export { a, b as c };                        export list
+//   export { a, b as c } from './file.js';       named re-export: a name of another module, exported under its name or another. An importer that
+//                                                imports it by name gets it from the module that defines it, so the re-exporting module is not in
+//                                                the page unless the page imports something of its own from it (`resolveDefining`, module-graph.mjs)
 // Only in files of a package (reached by a package import or from a file of one, module-graph.mjs; the project's own files keep the one form above):
 //   import name from './file.js';                default import (also `import name, { a } from`, `import name, * as ns from`)
 //   export default expression;                   default export (a named function or class declaration keeps its name)
-// Not supported (reported with the file name): default imports/exports in the project's own files, `export * from`,
-// re-exports, `export let/var` (imports are bound once, so exported bindings must not be reassigned), destructuring
+// Not supported (reported with the file name): default imports/exports in the project's own files, `export * from` (list the names),
+// `export let/var` (imports are bound once, so exported bindings must not be reassigned), destructuring
 // exports, bare specifiers that cannot be resolved to a package file (see resolve-package.mjs), and import cycles.
 // Statements must start at the beginning of a line.
 // Comments, strings, template literals and regular expressions are skipped when statements are looked for.
@@ -27,7 +30,9 @@ const DEFAULT_IMPORT = /^import\s+[\w$]+\s*(?:,|\bfrom\b)/m;
 // `import name from 'x'`, `import name, { a } from 'x'`, `import name, * as ns from 'x'`: groups 1 name, 2 namespace, 3 list, 4 quote, 5 specifier.
 const DEFAULT_IMPORT_STATEMENT = /^import\s+([\w$]+)\s*(?:,\s*(?:\*\s*as\s+([\w$]+)|\{([^}]*)\})\s*)?from\s*(['"])([^'"\n]+)\4[ \t]*;?[ \t]*$/gm;
 const DEFAULT_EXPORT = /^export\s+default\b/m;
-const UNSUPPORTED_EXPORT = /^export\s+(?:\*|\{[^}]*\}\s*from\b)/m;
+const UNSUPPORTED_EXPORT = /^export\s*\*/m;
+// `export { a, b as c } from './x.js'`: groups 1 list, 2 quote, 3 specifier.
+const REEXPORT_STATEMENT = /^export\s*\{([^}]*)\}\s*from\s*(['"])([^'"\n]+)\2[ \t]*;?[ \t]*$/gm;
 // `export default ` and what follows it: a declaration with a name keeps it, anything else becomes the value of DEFAULT_LOCAL.
 const EXPORT_DEFAULT = /^export\s+default\s+/gm;
 const DEFAULT_DECLARATION = /^(?:async\s+function\*?|function\*?|class)(?![\w$])\s*([\w$]*)/;
@@ -72,7 +77,11 @@ const parseNamedBindings = (text) =>
 // `inPackage` is true for a file of a package (the module graph knows: it came from a package import, linked or not, or
 // from a file of one): only there default imports and default exports are accepted, because that code is not ours to
 // change. The project's own files keep one form.
-export const parseModule = ({ path, sourceText: rawSourceText, resolveImport, inPackage = false }) => {
+//
+// `resolveDefining(importedPath, name)` (optional) says where an imported name is defined when the module it is imported from only
+// re-exports it: `{ path, name }` of the module that defines it, or null. A named import of a re-exported name is then written against
+// that module, and the module it was imported from is a dependency only if something else is imported from it.
+export const parseModule = ({ path, sourceText: rawSourceText, resolveImport, resolveDefining = () => null, inPackage = false }) => {
   const sourceText = rawSourceText.replace(/\r\n/g, '\n'); // the statement patterns end at a newline: a file saved with CRLF reads as LF (same lines)
   const masked = maskNonCode(sourceText);
   if (!inPackage) {
@@ -87,7 +96,7 @@ export const parseModule = ({ path, sourceText: rawSourceText, resolveImport, in
   }
   const unsupportedExport = UNSUPPORTED_EXPORT.exec(masked);
   if (unsupportedExport) {
-    throw new BuildError(`${path}:${lineOf(sourceText, unsupportedExport.index)}: "export *" and re-exports are not supported. Export named values: export const name = ... If a package you import is written with them, give the browser bundle a one-file build of it (docs/BUILD.md, "Vendor files")`);
+    throw new BuildError(`${path}:${lineOf(sourceText, unsupportedExport.index)}: "export *" is not supported. List the names: export { a, b } from './x.js'. If a package you import is written with it, give the browser bundle a one-file build of it (docs/BUILD.md, "Vendor files")`);
   }
 
   // The bundler's messages about a bad import name the line.
@@ -104,6 +113,7 @@ export const parseModule = ({ path, sourceText: rawSourceText, resolveImport, in
   const dynamicDependencies = [];
   const importStatements = [];
   const exportedBindings = new Map(); // exported name -> local name
+  const reexports = new Map(); // exported name -> { path, name }: what `export { name } from './path.js'` re-exports
   const edits = []; // { from, to, text }: a part of the original source that is replaced
 
   // A statement that is taken out leaves its lines behind, empty, so every line of the body is the line of the source it came from
@@ -125,16 +135,34 @@ export const parseModule = ({ path, sourceText: rawSourceText, resolveImport, in
       if (!stylesheets.includes(importedPath)) stylesheets.push(importedPath);
       return;
     }
-    if (!staticDependencies.includes(importedPath)) staticDependencies.push(importedPath);
-    const marker = moduleMarker(importedPath);
-    // The module's value is an object of its exports, so the default export is the key `default`.
-    const bindings = namedList === undefined ? [] : parseNamedBindings(namedList).map(({ imported, local }) => (imported === local ? imported : `${imported}: ${local}`));
-    if (namespaceName) {
-      if (defaultName) importStatements.push(`const ${defaultName} = ${marker}.default;`);
-      importStatements.push(`const ${namespaceName} = ${marker};`);
-    } else {
-      if (defaultName) bindings.unshift(`default: ${defaultName}`);
-      if (bindings.length) importStatements.push(`const { ${bindings.join(', ')} } = ${marker};`);
+    // A name the module only re-exports is imported from the module that defines it: the page gets that module and not the others the
+    // re-exporting one lists (an `index.js` of components would otherwise put every component in every page).
+    const named = namedList === undefined ? [] : parseNamedBindings(namedList);
+    const kept = [];
+    const redirected = new Map(); // defining module -> its bindings
+    for (const binding of named) {
+      const defined = namespaceName || defaultName ? null : resolveDefining(importedPath, binding.imported);
+      if (!defined || defined.path === importedPath) kept.push(binding);
+      else redirected.set(defined.path, [...(redirected.get(defined.path) ?? []), { imported: defined.name, local: binding.local }]);
+    }
+    const bindingText = (list) => list.map(({ imported, local }) => (imported === local ? imported : `${imported}: ${local}`));
+    // The module itself is a dependency unless every name was found elsewhere (a side-effect import, a namespace and a default keep it).
+    if (kept.length || !redirected.size) {
+      if (!staticDependencies.includes(importedPath)) staticDependencies.push(importedPath);
+      const marker = moduleMarker(importedPath);
+      // The module's value is an object of its exports, so the default export is the key `default`.
+      const bindings = bindingText(kept);
+      if (namespaceName) {
+        if (defaultName) importStatements.push(`const ${defaultName} = ${marker}.default;`);
+        importStatements.push(`const ${namespaceName} = ${marker};`);
+      } else {
+        if (defaultName) bindings.unshift(`default: ${defaultName}`);
+        if (bindings.length) importStatements.push(`const { ${bindings.join(', ')} } = ${marker};`);
+      }
+    }
+    for (const [definingPath, list] of redirected) {
+      if (!staticDependencies.includes(definingPath)) staticDependencies.push(definingPath);
+      importStatements.push(`const { ${bindingText(list).join(', ')} } = ${moduleMarker(definingPath)};`);
     }
   };
   for (const found of masked.matchAll(IMPORT_STATEMENT)) addImport(found, { namespaceName: found[2], namedList: found[3] });
@@ -148,6 +176,29 @@ export const parseModule = ({ path, sourceText: rawSourceText, resolveImport, in
       exportedBindings.set(exportedName, localName);
     }
     removeStatement(found.index, found.index + found[0].length);
+  }
+
+  // `export { b as c } from './x.js'` is `import { b as <alias> } from './x.js'` and `export { <alias> as c }`: a module that is in the
+  // page has every name it re-exports, as in a browser. An importer that asks for the name by name is sent to './x.js' instead (above).
+  for (const found of masked.matchAll(REEXPORT_STATEMENT)) {
+    const [statement, , quote, maskedSpecifier] = found;
+    const line = lineOf(sourceText, found.index);
+    const specifierStart = found.index + statement.indexOf(quote) + 1;
+    const specifier = sourceText.slice(specifierStart, specifierStart + maskedSpecifier.length);
+    const importedPath = resolveImportAt(specifier, line);
+    if (importedPath.endsWith('.css')) throw new BuildError(`${path}:${line}: a stylesheet cannot be re-exported (${specifier}). Write import '${specifier}'; to include it`);
+    if (!staticDependencies.includes(importedPath)) staticDependencies.push(importedPath);
+    const bindings = [];
+    for (const { imported, local: exportedName } of parseNamedBindings(found[1])) {
+      if (exportedName === 'default' && !inPackage) throw new BuildError(`${path}:${line}: default exports are not supported in the project's own files (only files of a package may use them). Re-export it by a name: export { name } from '${specifier}'`);
+      if (exportedBindings.has(exportedName)) throw new BuildError(`${path}:${line}: duplicate export ${exportedName}. Export each name once`);
+      const alias = `reexport$${exportedName}`;
+      exportedBindings.set(exportedName, alias);
+      reexports.set(exportedName, { path: importedPath, name: imported });
+      bindings.push(`${imported}: ${alias}`);
+    }
+    if (bindings.length) importStatements.push(`const { ${bindings.join(', ')} } = ${moduleMarker(importedPath)};`);
+    removeStatement(found.index, found.index + statement.length);
   }
 
   for (const found of masked.matchAll(EXPORT_DECLARATION)) {
@@ -216,5 +267,6 @@ export const parseModule = ({ path, sourceText: rawSourceText, resolveImport, in
     stylesheets,
     dynamicDependencies,
     exportedBindings,
+    reexports,
   };
 };

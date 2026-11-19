@@ -30,6 +30,24 @@ export const buildModuleGraph = ({ projectRoot: givenRoot, entries, replacements
   const packagePaths = new Set();
   const packageOfPath = new Map(); // module path -> the name of the npm package it belongs to (what assign-chunks.mjs splits by)
 
+  // Where a name that `modulePath` exports is defined, following the modules that only re-export it: `{ path, name }`. A module that
+  // cannot be read here, or is being read (a cycle), is where the search stops: the importer then imports from it, and the problem is
+  // reported when the graph visits that module.
+  const loading = new Set();
+  const resolveDefining = (modulePath, name, trail = []) => {
+    if (loading.has(modulePath) || trail.includes(modulePath)) return null;
+    let record;
+    try {
+      record = loadModule(modulePath);
+    } catch (error) {
+      if (error instanceof BuildError) return null;
+      throw error;
+    }
+    const reexport = record.reexports.get(name);
+    if (!reexport) return { path: modulePath, name };
+    return resolveDefining(reexport.path, reexport.name, [...trail, modulePath]) ?? { path: modulePath, name };
+  };
+
   const loadModule = (path) => {
     if (modules.has(path)) return modules.get(path);
     const absolutePath = resolve(projectRoot, path);
@@ -61,9 +79,14 @@ export const buildModuleGraph = ({ projectRoot: givenRoot, entries, replacements
       return importedPath;
     };
     const sourcePath = replacements[path] ?? path; // the file whose text is used: a replaced module is read from its replacement
-    const record = { ...parseModule({ path, sourceText: readFileSync(resolve(projectRoot, sourcePath), 'utf8'), resolveImport, inPackage: packagePaths.has(path) }), sourcePath, packageName: packageOfPath.get(path) ?? null };
-    modules.set(path, record);
-    return record;
+    loading.add(path);
+    try {
+      const record = { ...parseModule({ path, sourceText: readFileSync(resolve(projectRoot, sourcePath), 'utf8'), resolveImport, resolveDefining, inPackage: packagePaths.has(path) }), sourcePath, packageName: packageOfPath.get(path) ?? null };
+      modules.set(path, record);
+      return record;
+    } finally {
+      loading.delete(path);
+    }
   };
 
   // A problem the bundler refuses, in the form the reader sees it: recorded when collecting, thrown otherwise. The same message
@@ -117,5 +140,8 @@ export const buildModuleGraph = ({ projectRoot: givenRoot, entries, replacements
       }
     }
   }
+  // A module that was read only to find where a re-exported name is defined, and that nothing imports, is not part of the graph.
+  const inGraph = new Set(order);
+  for (const path of [...modules.keys()]) if (!inGraph.has(path)) modules.delete(path);
   return { projectRoot, modules, order, roots };
 };
