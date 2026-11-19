@@ -17,7 +17,7 @@ const { a, button, div, footer, header, input, main, p, pageSlot, section, span,
 
 // ---------------------------------------------------------------------------------------------------- a fake browser
 
-const listeners = { click: [], popstate: [], pagehide: [], pageshow: [], pointerover: [] };
+const listeners = { click: [], popstate: [], pagehide: [], pageshow: [], pointerover: [], pointerdown: [] };
 const head = new ShimElement('head');
 const body = new ShimElement('body');
 shimDocument.head = head;
@@ -472,6 +472,100 @@ test('the swap runs as one View Transition where the browser has one, and reduce
   }
 });
 
+test('where the browser has View Transition types, only the page slot is named and faded: the root does not cross-fade, and the name is gone when it ends', async () => {
+  await goHome();
+  const calls = [];
+  class FakeSheet {
+    replaceSync(text) { this.text = text; }
+  }
+  window.ViewTransition = class { get types() { return new Set(); } };
+  window.CSSStyleSheet = FakeSheet;
+  shimDocument.adoptedStyleSheets = [];
+  const sheets = () => shimDocument.adoptedStyleSheets;
+  const ending = deferred();
+  const seenInside = [];
+  shimDocument.startViewTransition = (argument) => {
+    calls.push(argument);
+    const slot = shimDocument.getElementById('app');
+    seenInside.push(slot.style.viewTransitionName);
+    const done = Promise.resolve(argument.update());
+    return { updateCallbackDone: done, finished: ending.then(() => done) };
+  };
+  window.matchMedia = () => ({ matches: false });
+  const slot = shimDocument.getElementById('app');
+  slot.style ??= {};
+  try {
+    const before = currentPage();
+    click(byDataId('to-b'));
+    await until(() => currentPage().ui !== before.ui, 'the page to be replaced');
+    assert.equal(typeof calls[0].update, 'function', 'the update is the one of the swap');
+    assert.deepEqual(calls[0].types, ['agent-ui-page'], 'the transition has the type the stylesheet is written for');
+    assert.deepEqual(seenInside, ['agent-ui-page'], 'the slot was named before the old page was captured');
+    assert.equal(slot.style.viewTransitionName, 'agent-ui-page', 'and still is while the transition runs');
+    ending.resolve();
+    await until(() => slot.style.viewTransitionName === '', 'the name to be taken off when the transition has finished');
+    assert.equal(sheets().length, 1, 'the rule is added to the document once');
+    assert.match(sheets()[0].text, /:root:active-view-transition-type\(agent-ui-page\)::view-transition-old\(root\) \{ display: none; \}/);
+    assert.match(sheets()[0].text, /::view-transition-new\(root\) \{ animation: none; mix-blend-mode: normal; \}/);
+    assert.match(sheets()[0].text, /::view-transition-group\(root\) \{ animation: none; \}/);
+
+    const onB = currentPage();
+    click(byDataId('back'));
+    await until(() => currentPage().ui !== onB.ui, 'back home');
+    assert.equal(sheets().length, 1, 'a second transition does not add the rule again');
+  } finally {
+    delete shimDocument.startViewTransition;
+    delete shimDocument.adoptedStyleSheets;
+    delete window.ViewTransition;
+    delete window.CSSStyleSheet;
+    delete window.matchMedia;
+    delete shimDocument.__agentUiViewTransitionRule;
+  }
+});
+
+test('a transition that fails to start takes the name off the slot and ends in a page load; a browser without types uses the plain transition', async () => {
+  await goHome();
+  const slot = shimDocument.getElementById('app');
+  slot.style ??= {};
+  window.ViewTransition = class { get types() { return new Set(); } };
+  window.CSSStyleSheet = class { replaceSync() {} };
+  shimDocument.adoptedStyleSheets = [];
+  window.matchMedia = () => ({ matches: false });
+  try {
+    shimDocument.startViewTransition = () => {
+      throw new Error('cannot start');
+    };
+    const loadsBefore = assigned.length;
+    click(byDataId('to-b'));
+    await until(() => assigned.length > loadsBefore, 'the page load');
+    assert.match(warnings.at(-1), /cannot start/);
+    assert.equal(slot.style.viewTransitionName, '', 'the slot has no name left');
+
+    // Without View Transition types the transition is the plain one: the update as a function, and nothing named.
+    delete window.ViewTransition;
+    const argumentsSeen = [];
+    shimDocument.startViewTransition = (update) => {
+      argumentsSeen.push(typeof update);
+      const result = update();
+      return { updateCallbackDone: Promise.resolve(result), finished: Promise.resolve(result) };
+    };
+    const before = currentPage();
+    click(byDataId('to-b'));
+    await until(() => currentPage().ui !== before.ui, 'the page to be replaced');
+    assert.deepEqual(argumentsSeen, ['function']);
+    assert.equal(slot.style.viewTransitionName, '');
+    const onB = currentPage();
+    click(byDataId('back'));
+    await until(() => currentPage().ui !== onB.ui, 'back home');
+  } finally {
+    delete shimDocument.startViewTransition;
+    delete shimDocument.adoptedStyleSheets;
+    delete window.ViewTransition;
+    delete window.CSSStyleSheet;
+    delete window.matchMedia;
+  }
+});
+
 test('an update that throws inside a View Transition ends in a page load, with the reason', async () => {
   await goHome();
   shimDocument.startViewTransition = (update) => {
@@ -601,6 +695,141 @@ const standInApp = () => {
   return { destroyed: false, dispatch() {}, onDestroy: (dispose) => disposers.push(dispose), destroy: () => disposers.forEach((dispose) => dispose()) };
 };
 const environment = () => ({ win: window, fetchFunction: window.fetch, shellName: 'main' });
+
+// ---- the triggers of withPrefetch that are a choice: the press and the viewport, and how long a document is used --------------
+
+const press = (target, extra = {}) => {
+  const event = { type: 'pointerdown', target, pointerType: 'touch', button: 0, ...extra };
+  for (const listener of [...listeners.pointerdown]) listener(event);
+};
+const softLink = (href) => {
+  const element = new ShimElement('a');
+  element.setAttribute('data-soft', '');
+  element.setAttribute('href', href);
+  return element;
+};
+// A shell app that has the navigation (its hooks) and the prefetch of these tests, standing alone.
+const prefetchApp = (choices = {}) => {
+  const app = standInApp();
+  navigation(environment())(app);
+  prefetch({ win: window, fetchFunction: window.fetch, ...choices })(app);
+  return app;
+};
+
+test('a press fetches the document of a soft link for any pointer, when pointerdown is chosen, and not otherwise', async () => {
+  await goHome();
+  restoreAnswers();
+  const link = softLink('/c');
+  const before = fetchedCount('/c');
+  const plain = prefetchApp();
+  press(link);
+  await sleep(5);
+  assert.equal(fetchedCount('/c'), before, 'a press fetches nothing unless pointerdown is chosen');
+  plain.destroy();
+
+  const chosen = prefetchApp({ pointerdown: true });
+  press(link, { button: 2 }); // not the primary button
+  press(softLink('/b?press=1'), { pointerType: 'pen' }); // another pointer is fine, but a link to the page showing is not
+  press(softLink(window.location.pathname + window.location.search));
+  press(byDataId('external')); // another origin
+  await sleep(5);
+  assert.equal(fetchedCount('/c'), before, 'neither a secondary button nor another origin fetched');
+  press(link); // a touch
+  await until(() => fetchedCount('/c') === before + 1, 'the press to fetch /c');
+  press(link);
+  await sleep(5);
+  assert.equal(fetchedCount('/c'), before + 1, 'a second press finds the fresh document and does not fetch again');
+  const pressesBefore = listeners.pointerdown.length;
+  chosen.destroy();
+  assert.equal(listeners.pointerdown.length, pressesBefore - 1, 'the listener went with the shell');
+});
+
+test('a soft link that scrolls into view is fetched once, links that arrive later are watched, and the observers go with the shell', async () => {
+  await goHome();
+  restoreAnswers();
+  const observed = new Set();
+  let report = null;
+  const disconnected = [];
+  window.IntersectionObserver = class {
+    constructor(callback) { report = callback; }
+    observe(element) { observed.add(element); }
+    unobserve(element) { observed.delete(element); }
+    disconnect() { disconnected.push('intersection'); }
+  };
+  let arrive = null;
+  window.MutationObserver = class {
+    constructor(callback) { arrive = callback; }
+    observe() {}
+    disconnect() { disconnected.push('mutation'); }
+  };
+  try {
+    const before = fetchedCount('/c');
+    const app = prefetchApp({ viewport: true });
+    assert.ok(observed.has(byDataId('to-c')), 'the soft links already in the document are watched');
+    assert.equal(observed.has(byDataId('plain')), false, 'a link without soft is not');
+    report([{ target: byDataId('to-c'), isIntersecting: false }]);
+    await sleep(5);
+    assert.equal(fetchedCount('/c'), before, 'a link that is not in view is not fetched');
+    report([{ target: byDataId('to-c'), isIntersecting: true }]);
+    await until(() => fetchedCount('/c') === before + 1, 'the link in view to be fetched');
+    assert.equal(observed.has(byDataId('to-c')), false, 'and it is not watched again');
+    const arrived = new ShimElement('div');
+    const late = softLink('/b?late=1');
+    arrived.append(late);
+    arrive([{ addedNodes: [arrived, 'a text'] }]);
+    assert.ok(observed.has(late), 'a link inside an element that arrived is watched');
+    app.destroy();
+    assert.deepEqual(disconnected.sort(), ['intersection', 'mutation']);
+  } finally {
+    delete window.IntersectionObserver;
+    delete window.MutationObserver;
+  }
+  // A window without an IntersectionObserver ignores the choice.
+  const app = prefetchApp({ viewport: true });
+  app.destroy();
+});
+
+test('maxAge says how long a fetched document is used: a document younger than it is taken at the click, and an older one is fetched again', async () => {
+  // A navigation that is only its two hooks, and a link that is only its key, so the shell of these tests does not answer the hover too.
+  const sources = [];
+  const app = { ...standInApp(), extendNavigation: (extension) => extension.document && sources.push(extension.document), softLinkTarget: (element) => element?.link ?? null };
+  const requested = [];
+  const aged = { offset: 0 };
+  const stale = () => ({ text: '<p>x</p>', key: '/age' });
+  prefetch({ win: window, fetchFunction: async (url) => (requested.push(url), htmlResponse('<p>x</p>')), maxAge: 30000, now: () => Date.now() + aged.offset })(app);
+  try {
+    const hoverOn = () => hover({ link: { key: '/age', here: false } });
+    hoverOn();
+    await until(() => requested.length === 1, 'the hover to fetch');
+    aged.offset = 20000; // older than the default five seconds, younger than maxAge
+    hoverOn();
+    await sleep(5);
+    assert.equal(requested.length, 1, 'the document of twenty seconds ago is still fresh: the hover does not fetch again');
+    assert.deepEqual(await sources[0]('/age'), stale(), 'and the click takes it');
+    assert.equal(await sources[0]('/age'), null, 'once');
+    hoverOn();
+    await until(() => requested.length === 2, 'a new hover to fetch');
+    aged.offset = 60000;
+    assert.equal(await sources[0]('/age'), null, 'a document older than maxAge is not taken: the click fetches');
+  } finally {
+    app.destroy();
+  }
+});
+
+test('withPrefetch({ ... }) is a plugin with choices: the listing without a call is the same plugin, and a wrong choice fails where it is written', async () => {
+  const { withPrefetch } = await import('../src/prefetch.js');
+  const expectError = (action, pattern) => assert.throws(action, (error) => pattern.test(error.message), String(pattern));
+  const environmentOf = () => ({ win: window, fetchFunction: window.fetch, basePath: '' });
+  assert.equal(typeof withPrefetch(environmentOf()), 'function', 'listed as it is, withPrefetch is called with the shell\'s environment and makes the plugin');
+  const chosen = withPrefetch({ viewport: true, maxAge: 20000 });
+  assert.equal(typeof chosen, 'function');
+  assert.equal(typeof chosen(environmentOf()), 'function', 'and with choices it makes a plugin of the same kind');
+  expectError(() => withPrefetch({ viewprt: true }), /withPrefetch\(\.\.\.\): unknown option "viewprt"\. Did you mean "viewport"\? Allowed options: pointerdown, viewport, maxAge/);
+  expectError(() => withPrefetch({ viewport: 'yes' }), /viewport is "yes", not true or false\. Write viewport: true to fetch on a link scrolling into view/);
+  expectError(() => withPrefetch({ pointerdown: 1 }), /pointerdown is 1, not true or false\. Write pointerdown: true to fetch on the press/);
+  expectError(() => withPrefetch({ maxAge: 10 }), /maxAge is 10, not a whole number of milliseconds from 1000 to 600000\. Write maxAge: 30000/);
+  expectError(() => withPrefetch(null), /the argument must be an object of options, got null/);
+});
 
 test('the navigation alone listens to no hover and runs the swap directly: prefetch and View Transition are opt-in plugins', async () => {
   const app = standInApp();

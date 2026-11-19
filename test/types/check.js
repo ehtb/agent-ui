@@ -280,3 +280,10 @@ grammarTables.svgParents.stop?.join(',');
 grammarTables.svgTextTags.includes('title');
 // @ts-expect-error there is no builder for an element the grammar leaves out
 import { style as svgStyle } from '../../src/spec.js';
+
+// withPrefetch takes choices, and a shell lists it called or not; onLeave is part of the plugin api.
+import { withPrefetch } from '../../src/prefetch.js';
+withPrefetch({ pointerdown: true, viewport: true, maxAge: 30000 });
+// @ts-expect-error an unknown choice is refused
+withPrefetch({ viewprt: true });
+app({ dev: true, namespaces: {}, spec: { tag: 'div' }, root: /** @type {any} */ (null), plugins: [(api) => api.onLeave(({ reason }) => reason.toUpperCase())] });
