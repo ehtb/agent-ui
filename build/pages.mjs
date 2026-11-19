@@ -199,7 +199,7 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
         `import * as view from '${toProject(page.viewFile)}?t=${stamp}';`,
         '',
         `const definition = definePage(pageOf(pageModule, '${page.file}'), { path: '${page.path}', ...contentOf(view, '${page.viewFile}') });`,
-        'export const { create, createShell, describePage, namespaces, shellContent, shellName, shellNamespaces, spec } = definition;',
+        'export const { create, createShell, describePage, hasReady, head, namespaces, shellContent, shellName, shellNamespaces, spec } = definition;',
         '// The URLs check and a static build render a page with parameters at (build/page-paths.mjs); undefined when view.js lists none.',
         'export const paths = view.paths;',
         '',

@@ -244,3 +244,12 @@ checkResponseHeaders({ x: {} }, 'test');
 createRequestContext({ headers: {} }, {});
 // @ts-expect-error an unknown handler option is refused
 createSsrHandler({ config: /** @type {any} */ ({}), nope: true });
+
+// Performance plugin and static spec audit.
+import { auditSpecPerformance, performance, withPerformance } from '../../src/performance.js';
+auditSpecPerformance({ tag: 'img', props: { src: '/a.png', alt: '', width: 100, height: 100, fetchpriority: 'high' } }, { hasReady: true })[0]?.toUpperCase();
+app({ dev: true, namespaces: {}, spec: { tag: 'div' }, root: /** @type {any} */ (null), plugins: [performance, performance({ elements: 1500, listRows: 100, onReport: (finding) => finding.kind.toUpperCase() })] });
+definePage({ head: { title: 'Perf' }, plugins: [withPerformance, withPerformance({ elements: 1000 })] }, { path: '/', view: { tag: 'div' } });
+// @ts-expect-error unknown performance option
+performance({ elemnts: 1000 });
+

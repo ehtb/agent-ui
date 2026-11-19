@@ -384,6 +384,7 @@ CSS is not rewritten: a `url()` in a stylesheet is relative to the stylesheet (`
 | Limit | Measured by | What it counts |
 |---|---|---|
 | `pageGzipBytes` | `agent-ui build` | The JavaScript and CSS a first visit downloads before the page runs, each file gzipped (`startupSize` of the page in `manifest.json`, and the page table of the build report). Over it, the build fails after writing the site, naming the pages and their startup chunks. |
+| `stylesheetsGzipBytes` | `agent-ui build` | The gzipped CSS a page links at startup (`stylesheetsSize.gzipBytes` of the page in `manifest.json`). Over it, the build fails after writing the site, naming the pages and their linked stylesheet URLs. |
 | `stateBytes` | `agent-ui check` | The bytes of the state script a rendered page carries. |
 | `elements` | `agent-ui check` | The elements a rendered page shows, its shell's included. |
 | `listRows` | `agent-ui check` | The rows of the largest list of a rendered page. Every row is rendered: there is no virtualization, so a long list is a page of the data at a time. |

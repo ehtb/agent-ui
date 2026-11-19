@@ -34,6 +34,7 @@ import { findHydrationProblems } from './hydration-check.mjs';
 import { didYouMean } from '../src/messages.js';
 import { compileUrlPattern, sortBySpecificity, withoutTrailingSlash } from '../src/url-pattern.js';
 import { toArray } from '../src/spec-core.js';
+import { auditSpecPerformance } from '../src/performance.js';
 import { validate } from '../src/validate.js';
 import { mentionsAgentUi } from './agent-instructions.mjs';
 import { findPathOwnerProblems, urlsOfPage } from '../build/page-paths.mjs';
@@ -98,16 +99,56 @@ const collectLinks = (spec) => {
 // What the bundler refuses in the modules the entries reach, one message per problem, in the order a single read finds them. The
 // graph collects the problems itself (`problems`), so a broken source costs the same as a good one and a file several pages share
 // is reported once.
-const findSourceProblems = ({ root, entries, replacements }) => {
+const findSourceProblems = ({ root, entries, replacements, performance = false }) => {
   const problems = [];
-  if (entries?.length) buildModuleGraph({ projectRoot: root, entries, replacements, problems });
+  if (!entries?.length) return problems;
+  const graph = buildModuleGraph({ projectRoot: root, entries, replacements, problems });
+  if (performance) problems.push(...findUnusedExportProblems(graph));
+  return problems;
+};
+
+// The bundler includes whole modules without tree shaking (docs/BUILD.md, "Pages and chunks"), so an export in a project module
+// that no page imports is downloaded as unused JavaScript by every page that imports the module.
+const IMPORT_BINDING = /^const\s+(?:\{([^}]+)\}|([\w$]+))\s*=\s*⟦module:([^⟧]+)⟧(?:\.default)?;$/;
+const findUnusedExportProblems = (graph) => {
+  const importedFrom = new Map();
+  for (const root of graph.roots) importedFrom.set(root.path, '*');
+  for (const record of graph.modules.values()) {
+    for (const dynamicPath of record.dynamicDependencies) importedFrom.set(dynamicPath, '*');
+    for (const statement of record.importStatements) {
+      const match = IMPORT_BINDING.exec(statement.trim());
+      if (!match) continue;
+      const [, namedList, namespaceName, targetPath] = match;
+      if (namespaceName) {
+        importedFrom.set(targetPath, '*');
+      } else if (importedFrom.get(targetPath) !== '*') {
+        const used = importedFrom.get(targetPath) ?? new Set();
+        for (const part of namedList.split(',')) {
+          const exportedName = part.trim().split(/\s*:\s*/)[0];
+          if (exportedName) used.add(exportedName);
+        }
+        importedFrom.set(targetPath, used);
+      }
+    }
+  }
+  const problems = [];
+  for (const [modulePath, record] of graph.modules.entries()) {
+    if (record.packageName !== null || modulePath.startsWith('.agent-ui/') || modulePath.startsWith('src/') || modulePath.startsWith('node_modules/') || /(^|\/)(page|view|api)\.js$/.test(modulePath)) continue;
+    const used = importedFrom.get(modulePath);
+    if (used === '*') continue;
+    for (const exportedName of record.exportedBindings.keys()) {
+      if (!used?.has(exportedName)) {
+        problems.push(`${modulePath}: exports "${exportedName}", which no page imports. The bundler includes whole modules (no tree shaking), so every page that imports ${modulePath} downloads "${exportedName}" as unused JavaScript. Remove the export, or move it to its own module`);
+      }
+    }
+  }
   return problems;
 };
 
 // `ui.errors` holds the messages the app reported (strings); an Error or another value is shown as it is.
 const describeError = (error) => (typeof error === 'string' ? error : (error.message ?? JSON.stringify(error)));
 
-export const checkProject = async ({ config, root = process.cwd() }) => {
+export const checkProject = async ({ config, root = process.cwd(), performance = false }) => {
   const problems = [];
   // A request below the API base that the project's fetchFunction does not answer is a mistake in a resource's URL or in
   // the endpoint, and is reported with the page that made it.
@@ -132,7 +173,7 @@ export const checkProject = async ({ config, root = process.cwd() }) => {
   const measurements = []; // { page, url, elements, listRows, listInside, stateBytes } of every page rendered
   const budgets = config.budgets ?? {};
   let pagesChecked = 0;
-  problems.push(...findSourceProblems({ root, entries: config.entries, replacements: config.replaceModules ?? {} }));
+  problems.push(...findSourceProblems({ root, entries: config.entries, replacements: config.replaceModules ?? {}, performance }));
   const pages = config.pages ?? [];
   // Each page's pattern is compiled once, not once per link and once per URL listed in `paths`. Most specific first, so the
   // first pattern that matches is the page the server would answer with.
@@ -222,6 +263,16 @@ export const checkProject = async ({ config, root = process.cwd() }) => {
       const earlier = shellTexts.get(module.shellName);
       if (earlier && earlier.text !== text) record.problems.push(`${page.file}: the content of the shell "${module.shellName}" differs from the one ${earlier.page.file} gives it. Every page of a shell imports the same content from one module; a different header needs a different shell name`);
       if (!earlier) shellTexts.set(module.shellName, { text, page });
+    }
+    if (performance) {
+      record.problems.push(
+        ...auditSpecPerformance(module.spec, {
+          head: module.head,
+          namespaces: module.namespaces,
+          hasReady: module.hasReady,
+          where: page.file,
+        }),
+      );
     }
     // A page with parameters is rendered at the URLs its view.js lists in `paths` (build/page-paths.mjs), the ones a static build writes.
     // One that lists none has no URL of its own to render: its spec is validated and it is mounted at a sample URL, and
@@ -315,7 +366,7 @@ export const checkProject = async ({ config, root = process.cwd() }) => {
 };
 
 if (isMain(import.meta.url)) {
-  const options = parseOrExit(process.argv.slice(2), { config: 'text' }, { command: 'agent-ui check' });
+  const options = parseOrExit(process.argv.slice(2), { config: 'text', performance: 'flag' }, { command: 'agent-ui check' });
   let config;
   try {
     config = await loadConfig({ root: process.cwd(), file: options.config, mode: { dev: true } });
@@ -323,7 +374,7 @@ if (isMain(import.meta.url)) {
     console.error(`check failed: ${error.message}`);
     process.exit(1);
   }
-  const { problems, pagesChecked, notes, measurements } = await checkProject({ config });
+  const { problems, pagesChecked, notes, measurements } = await checkProject({ config, performance: Boolean(options.performance) });
   for (const note of notes) console.log(`note: ${note}`);
   if (measurements.length) {
     console.log('url                            elements  largest list  state');

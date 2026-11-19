@@ -48,9 +48,10 @@ test('measureOutline counts the elements of a rendered page and finds its larges
 });
 
 test('budgets in the build config: known limits, whole numbers, with the fix', () => {
-  assert.deepEqual(checkConfig({ budgets: { pageGzipBytes: 30000, stateBytes: 50000, elements: 2000, listRows: 200 } }), []);
-  assert.deepEqual(checkConfig({ budgets: { listRow: 5 } }), ['build config budgets key "listRow": unknown limit. Did you mean "listRows"? Allowed limits: pageGzipBytes, stateBytes, elements, listRows']);
+  assert.deepEqual(checkConfig({ budgets: { pageGzipBytes: 30000, stylesheetsGzipBytes: 15000, stateBytes: 50000, elements: 2000, listRows: 200 } }), []);
+  assert.deepEqual(checkConfig({ budgets: { listRow: 5 } }), ['build config budgets key "listRow": unknown limit. Did you mean "listRows"? Allowed limits: pageGzipBytes, stylesheetsGzipBytes, stateBytes, elements, listRows']);
   assert.deepEqual(checkConfig({ budgets: { elements: 0 } }), ['build config "budgets.elements": must be a whole number, 1 or more. Write budgets: { elements: 2000 }']);
+  assert.deepEqual(checkConfig({ budgets: { stylesheetsGzipBytes: 0 } }), ['build config "budgets.stylesheetsGzipBytes": must be a whole number, 1 or more. Write budgets: { stylesheetsGzipBytes: 15000 }']);
   assert.match(checkConfig({ budgets: 5 })[0], /"budgets": must be an object of limits/);
 });
 

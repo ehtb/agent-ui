@@ -63,6 +63,10 @@
       "types": "./src/moves.d.ts",
       "default": "./src/moves.js"
     },
+    "./performance": {
+      "types": "./src/performance.d.ts",
+      "default": "./src/performance.js"
+    },
     "./error-messages": {
       "types": "./src/error-messages.d.ts",
       "default": "./src/error-messages.js"

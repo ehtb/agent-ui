@@ -32,7 +32,7 @@ export const ATTRIBUTES = (
   'class style title lang dir hidden tabindex role accesskey draggable contenteditable spellcheck translate autofocus inert slot part popover enterkeyhint inputmode ' +
   'id for name value type checked disabled readonly required placeholder min max step minlength maxlength pattern multiple selected size rows cols wrap ' +
   'autocomplete autocapitalize accept capture form formaction formmethod formnovalidate formtarget list open label novalidate method action enctype target ' +
-  'href rel download hreflang ping referrerpolicy src alt width height loading decoding srcset sizes crossorigin usemap ismap ' +
+  'href rel download hreflang ping referrerpolicy src alt width height loading decoding fetchpriority srcset sizes crossorigin usemap ismap ' +
   'colspan rowspan headers scope span abbr datetime cite start reversed high low optimum dirname media ' +
   'follow soft focus'
 ).split(' ').concat(SVG_ATTRIBUTES);

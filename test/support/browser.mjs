@@ -162,6 +162,56 @@ export const launchBrowser = async () => {
       press: key,
       // Waits until the app has applied everything it was told (the microtask queue is empty).
       settle: () => evaluate('window.__ui.settle().then(() => true)'),
+      // Measures Lighthouse-aligned performance criteria in the live page: render-blocking requests, unused CSS rules per
+      // stylesheet, DOM size, and above-the-fold or unsized images, returning both the measurements and actionable problems.
+      auditPerformance: ({ unusedCssRatio = 0.5, maxDomElements = 1500 } = {}) =>
+        evaluate(`(() => {
+          const problems = [];
+          const pathOf = (url) => (url ? url.replace(/^https?:\\/\\/[^/]+/, '') : 'inline');
+          const renderBlockingResources = performance
+            .getEntriesByType('resource')
+            .filter((entry) => entry.renderBlockingStatus === 'blocking')
+            .map((entry) => ({ url: pathOf(entry.name), transferSize: entry.transferSize ?? 0, duration: Math.round(entry.duration ?? 0) }));
+          const stylesheets = [];
+          const baseSelector = (text) => text.replace(/::?[a-zA-Z-]+(?:\\([^)]*\\))?/g, '').trim();
+          for (const sheet of [...document.styleSheets]) {
+            let rules;
+            try { rules = sheet.cssRules; } catch { continue; }
+            if (!rules) continue;
+            let totalRules = 0;
+            let unusedRules = 0;
+            for (const rule of [...rules]) {
+              if (!rule.selectorText) continue;
+              const selectors = rule.selectorText.split(',').map(baseSelector).filter((selector) => selector && !['*', 'html', 'body', ':root'].includes(selector));
+              if (!selectors.length) continue;
+              totalRules++;
+              const matched = selectors.some((selector) => { try { return document.querySelector(selector) !== null; } catch { return true; } });
+              if (!matched) unusedRules++;
+            }
+            const href = pathOf(sheet.href);
+            const ratio = totalRules ? unusedRules / totalRules : 0;
+            stylesheets.push({ href, totalRules, unusedRules, unusedRatio: ratio });
+            if (totalRules >= 10 && ratio > ${Number(unusedCssRatio)}) {
+              problems.push(\`stylesheet "\${href}": \${unusedRules} of \${totalRules} rules (\${Math.round(ratio * 100)}%) match no element on this page, blocking initial render. Move page-specific rules into page.css, or @import shared CSS only in the pages that use it\`);
+            }
+          }
+          for (const image of [...document.querySelectorAll('img')]) {
+            const id = image.getAttribute('data-id') || image.getAttribute('src') || 'img';
+            if (!image.hasAttribute('width') || !image.hasAttribute('height')) {
+              problems.push(\`img "\${id}": has no width and height, so the layout shifts when it loads (CLS). Add width and height to props\`);
+            }
+            const box = image.getBoundingClientRect();
+            const inViewport = box.width > 0 && box.height > 0 && box.top < window.innerHeight && box.bottom > 0;
+            if (inViewport && image.getAttribute('loading') === 'lazy') {
+              problems.push(\`img "\${id}": is in the initial viewport and has loading="lazy", which delays Largest Contentful Paint. Remove loading="lazy" and add fetchpriority: 'high'\`);
+            }
+          }
+          const domElements = document.querySelectorAll('*').length;
+          if (domElements > ${Number(maxDomElements)}) {
+            problems.push(\`document: renders \${domElements} DOM elements, over the limit of ${Number(maxDomElements)}. Show less at once (a page of the data, or a branch that opens on request)\`);
+          }
+          return { renderBlockingResources, stylesheets, domElements, problems };
+        })()`),
     };
   };
   return { open, close: () => closeAll(cleanups), cleanups };

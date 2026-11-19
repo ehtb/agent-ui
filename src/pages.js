@@ -180,7 +180,7 @@ export const definePage = (page, { path, view, layout, pending, spec, shell: she
     if (typeof plugin !== 'function') fail(`page "${path}"`, `plugins[${index}] is ${typeof plugin}, not a function`, PLUGIN_FIX);
     let installed;
     try {
-      installed = plugin({ ...environment, page: { path, head: page.head } });
+      installed = plugin({ ...environment, page: { path, head: page.head, hasReady: typeof page.ready === 'function' } });
     } catch (error) {
       // A plugin may throw anything, a string included: the message must name what was thrown, not "undefined".
       const wrapped = new Error(problem(`page "${path}"`, `plugins[${index}]${pluginName(plugin)} threw ${error?.message ?? String(error)}`, PLUGIN_FIX));
@@ -232,6 +232,8 @@ export const definePage = (page, { path, view, layout, pending, spec, shell: she
 
   return {
     path,
+    head: page.head,
+    hasReady: typeof page.ready === 'function',
     namespaces,
     spec: pageSpec,
     create,

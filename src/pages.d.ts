@@ -86,7 +86,7 @@ export interface PagePluginEnvironment {
   adopt?: boolean;
   initialState?: StateSnapshot;
   debug?: boolean;
-  page: { path: string; head: PageHead };
+  page: { path: string; head: PageHead; hasReady?: boolean };
 }
 /** What create() and mount() receive: the environment, the root to render into, the state to start from and, in a document with a shell, the shell's app. */
 export interface PageEnvironment {
@@ -105,6 +105,8 @@ export interface PageEnvironment {
 }
 export interface PageDefinition {
   path: string;
+  head: PageHead;
+  hasReady: boolean;
   namespaces: Record<string, Namespace>;
   spec: SpecNode;
   /** The page's app. `shell` is the app of the page's shell, when it has one. */

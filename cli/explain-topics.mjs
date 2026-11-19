@@ -110,6 +110,7 @@ export const topics = [
       'withHead             @ehtb/agent-ui/head            keeps the document current while head reads state',
       'withFollow           @ehtb/agent-ui/follow          the follow prop: a dragged row under the pointer (the app fails at mount without it)',
       'withMoves            @ehtb/agent-ui/moves           rows with transition slide to their new place when the list reorders',
+      'withPerformance      @ehtb/agent-ui/performance     development performance guidance aligned with Lighthouse (stubbed in production)',
       'withNavigation       @ehtb/agent-ui/navigation      in a shell\'s plugins: soft: true links and route.go between its pages',
       'withPrefetch         @ehtb/agent-ui/prefetch        in a shell\'s plugins after withNavigation: a soft link\'s page is fetched on hover',
       'withViewTransition   @ehtb/agent-ui/view-transition in a shell\'s plugins after withNavigation: the swap runs as a View Transition',

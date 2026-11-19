@@ -134,6 +134,7 @@ const STUBS = {
   hot: 'hot-omitted',
   'pages-checks': 'pages-checks-omitted',
   'pages-server': 'pages-server-omitted',
+  performance: 'performance-omitted',
   'runtime-checks': 'runtime-checks-omitted',
   'shell-checks': 'shell-checks-omitted',
   'spec-checks': 'spec-checks-omitted',

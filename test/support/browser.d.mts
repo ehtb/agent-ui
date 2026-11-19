@@ -10,6 +10,12 @@ export interface BrowserPage {
   type(selector: string, text: string, options?: { replace?: boolean }): Promise<void>;
   press(key: string, modifiers?: number): Promise<void>;
   settle(): Promise<boolean>;
+  auditPerformance(options?: { unusedCssRatio?: number; maxDomElements?: number }): Promise<{
+    renderBlockingResources: { url: string; transferSize: number; duration: number }[];
+    stylesheets: { href: string; totalRules: number; unusedRules: number; unusedRatio: number }[];
+    domElements: number;
+    problems: string[];
+  }>;
 }
 export interface Browser {
   open(url: string): Promise<BrowserPage>;

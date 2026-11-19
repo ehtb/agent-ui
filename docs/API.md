@@ -38,7 +38,7 @@ The package is imported by name. Every module has one specifier, types included.
 |---|---|
 | `@ehtb/agent-ui` | the runtime: `app`, `signal`, `effect`, `settle`, `validate`, `grammar`, `mergeInitialState`, `countEffectRuns` |
 | `@ehtb/agent-ui/head` | the plugin `withHead`, which keeps the browser's document current as the state changes, for a page whose `head` is a function of the state (section 13, "Head") |
-| `@ehtb/agent-ui/resources`, `/window-events`, `/follow`, `/moves` | plugins; a page downloads only the ones it imports. All the plugins, and when to list each: section 6, "The plugins the package ships" |
+| `@ehtb/agent-ui/resources`, `/window-events`, `/follow`, `/moves`, `/performance` | plugins; a page downloads only the ones it imports. All the plugins, and when to list each: section 6, "The plugins the package ships" |
 | `@ehtb/agent-ui/spec` | the builders (section 3, "Builders"): `div(...)`, `state(...)`, `act(...)`, `each`, `when`, one function per tag and operator |
 | `@ehtb/agent-ui/mount-element` | `mountElement(api, id, mount)`: how a plugin that draws into an element (a chart, an editor, a map) claims it (section 6, "Plugins that draw into an element") |
 | `@ehtb/agent-ui/spec-tools`, `/components`, `/memoize`, `/sync-apps` | `patchSpec`, `listIds`, `expandComponents`, `defineElement`, `param`, `paramKey`, `slot`, `memoizeItem`, `syncApps` (one-way sync between two separate apps on a page, section 6) |
@@ -484,6 +484,7 @@ A plugin is `(api) => void`, run once after mount. A plugin that talks to the ou
 | `withHead` | `@ehtb/agent-ui/head` | Keeps the browser's document current while `head` reads state; a head with fixed values is written when the page is rendered and needs no plugin. |
 | `withFollow` | `@ehtb/agent-ui/follow` | The `follow` prop, a dragged row under the pointer (with `app()`, `follow`); the app fails at mount when the spec uses it and no plugin handles it. |
 | `withMoves` | `@ehtb/agent-ui/moves` | Rows with `transition` slide to their new place when the list reorders (with `app()`, `moves`). |
+| `withPerformance` | `@ehtb/agent-ui/performance` | Development performance guidance aligned with Lighthouse (with `app()`, `performance`, plus `auditSpecPerformance` for static checks; replaced by a stub in production builds). |
 | `withNavigation` | `@ehtb/agent-ui/navigation` | `soft: true` links and `route.go` between a shell's pages, a page load made faster; a plain link is a normal page load. |
 | `withPrefetch` | `@ehtb/agent-ui/prefetch` | In a shell's plugins after `withNavigation`: a soft link's document is fetched when the visitor hovers it, so the click often swaps without waiting for the network. |
 | `withViewTransition` | `@ehtb/agent-ui/view-transition` | In a shell's plugins after `withNavigation`: the swap runs as one View Transition (`document.startViewTransition`) where the browser can animate it. |
@@ -546,6 +547,26 @@ namespaces: { items: {
 - The handler format is the same as `on`, with one difference: arguments are literals or `{event: path}` only, for example `{ width: { event: 'target.innerWidth' } }`.
 - The event is one of the events of `on` or `resize`, `scroll`, `online`, `offline`, `visibilitychange`, `hashchange`, `popstate`, `focus`, `blur`, `pagehide`, `pageshow`, `beforeunload` (`WINDOW_EVENTS` in `src/grammar.js`); a key chord (`keydown.Control+k`) only on `keydown` and `keyup`, modifiers in the order Control, Alt, Shift, Meta.
 - Argument names must match the action's declaration exactly. All of it is checked when the plugin is installed (`src/window-events-checks.js`, left out of production builds): one line per problem, with a "Did you mean" for event and action names.
+
+### Performance plugin (`src/performance.js`)
+
+`withPerformance` (`@ehtb/agent-ui/performance`; `performance` for `app()`, and `auditSpecPerformance(spec, { head?, namespaces?, hasReady?, where? })` for static checks alone) guides an author or agent to write pages that pass Lighthouse performance criteria. Production builds replace `src/performance.js` with `build/stubs/performance-omitted.js`, and the plugin does nothing while `isServerRendering` is true or `dev` is false, so leaving `plugins: [withPerformance]` in `page.js` costs nothing in production.
+
+```js
+import { withPerformance } from '@ehtb/agent-ui/performance';
+
+export const page = {
+  head: { title: 'Catalog' },
+  namespaces: { catalog },
+  plugins: [withResources, withPerformance], // or withPerformance({ elements: 1500, listRows: 100, onReport })
+  ready: (state) => state.catalog.status === 'ready',
+};
+```
+
+- **Static spec and page checks** (`auditSpecPerformance`, also run by `agent-ui check --performance`): render-blocking `<script src="...">` in `head.tags` without `defer`, `async` or `type: 'module'`; `<img>` without `width` and `height` (CLS); `<img>` with both `loading: 'lazy'` and `fetchpriority: 'high'`; a namespace with `resources` on a page without `ready(state)` (SSR renders before data arrives, delaying LCP); a resource with `owns` on a page with `ready(state)` that omits `revalidate: 'never'` (the browser fetches the data again on mount); and a namespace listed in `page.js` that nothing in the view, head or other namespaces reads or calls (unused JavaScript).
+- **Live DOM, list and action checks** (at mount and after each action): rendered DOM elements over `elements` (default 1500, Lighthouse's DOM-size threshold); unvirtualized list rows over `listRows` (default 100); a derived list of objects that allocates new references for unchanged items on an action instead of wrapping its per-item transform in `memoizeItem`; and derived values that an action makes stale taking longer than `actionMs` to recompute (default 16 ms).
+- **Browser stylesheets and Web Vitals** (`document.styleSheets` and `PerformanceObserver` when running in a browser): stylesheets with at least 10 rules where more than `unusedCssRatio` (default 0.5) match no element on the page; Largest Contentful Paint (`largest-contentful-paint`) on an `<img>` that has `loading="lazy"` or lacks `fetchpriority="high"`, naming its `data-id`; Cumulative Layout Shift (`layout-shift`) over 0.1 without recent input, naming the shifted elements' `data-id`s; and main-thread `longtask` entries over `longTaskMs` (default 50 ms) with the last action that ran.
+- Each finding is reported once through `onReport({ kind, message, details })` (default: `console.warn`). Unknown options are refused at creation with "Did you mean".
 
 ### syncApps (`src/sync-apps.js`): two separate apps on one page
 
@@ -1314,7 +1335,7 @@ head: {
 
 ### Check
 
-`agent-ui check` (`--config=<file>`) renders every page in development mode, a page with parameters at the URLs its view.js lists in `paths` (one that lists none is started at a sample URL, without fetching data, and printed as a note). It reports spec problems, action and resource errors, data that never loaded, missing titles, an invalid `status`, links that lead nowhere, and what the bundler refuses in the source (a re-export or `export *`, a default import or export in the project's own files, an import that does not resolve, an import cycle: BUILD.md, "Supported source dialect"; Node imports such a file, so only reading it as the bundler does finds it, with its file and line, once however many pages import it) in one list, and exits with code 1 when anything is wrong. The source is read once and every problem in it is reported, so a broken file costs a check no more than a good one. It renders a few URLs at a time (a small fixed bound) and keeps the report in page and URL order; a page that never becomes ready costs one `renderTimeoutMs` wait per batch rather than one per page, and a `fetchFunction` that keeps mutable state sees requests interleaved, as it would on a server. A link message lists at most ten pages. It prints a table of what each URL it rendered costs: the elements shown (page and shell), the rows of the largest list, the bytes of the state script. `budgets` in `build.config.mjs` (`stateBytes`, `elements`, `listRows`) turn a page over a limit into a problem (`BUILD.md`, "Budgets"). `checkProject` returns the same numbers as `measurements`.
+`agent-ui check` (`--config=<file>`, `--performance`) renders every page in development mode, a page with parameters at the URLs its view.js lists in `paths` (one that lists none is started at a sample URL, without fetching data, and printed as a note). It reports spec problems, action and resource errors, data that never loaded, missing titles, an invalid `status`, links that lead nowhere, and what the bundler refuses in the source (a re-export or `export *`, a default import or export in the project's own files, an import that does not resolve, an import cycle: BUILD.md, "Supported source dialect"; Node imports such a file, so only reading it as the bundler does finds it, with its file and line, once however many pages import it) in one list, and exits with code 1 when anything is wrong. With `--performance` (`performance: true` in `checkProject`) it also runs `auditSpecPerformance` on every page and reports unused exports in the project's own shared modules (because the bundler includes whole modules without tree shaking). The source is read once and every problem in it is reported, so a broken file costs a check no more than a good one. It renders a few URLs at a time (a small fixed bound) and keeps the report in page and URL order; a page that never becomes ready costs one `renderTimeoutMs` wait per batch rather than one per page, and a `fetchFunction` that keeps mutable state sees requests interleaved, as it would on a server. A link message lists at most ten pages. It prints a table of what each URL it rendered costs: the elements shown (page and shell), the rows of the largest list, the bytes of the state script. `budgets` in `build.config.mjs` (`stateBytes`, `elements`, `listRows`) turn a page over a limit into a problem (`BUILD.md`, "Budgets"). `checkProject` returns the same numbers as `measurements`.
 
 ## 14. Limits and what is deliberately not here
 

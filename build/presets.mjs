@@ -44,6 +44,7 @@ export const frameworkBuildOptions = ({ dev = false, validator = dev ? 'include'
       ...(validator === 'omit'
         ? {
             [at('src/validate.js')]: at('build/stubs/validate-omitted.js'),
+            [at('src/performance.js')]: at('build/stubs/performance-omitted.js'),
             [at('src/runtime-checks.js')]: at('build/stubs/runtime-checks-omitted.js'),
             [at('src/error-messages.js')]: at('build/stubs/error-messages-omitted.js'),
             [at('src/spec-checks.js')]: at('build/stubs/spec-checks-omitted.js'),

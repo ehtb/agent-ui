@@ -9,8 +9,8 @@ import { didYouMean } from '../src/messages.js';
 import { BASE_PATH_ADVICE, isBasePath } from '../src/base-path-checks.js';
 
 const KEYS = ['outDir', 'assetsDir', 'publicDir', 'hash', 'minify', 'sourceMaps', 'transform', 'manualChunks', 'minSharedChunkBytes', 'replaceModules', 'api', 'fetchFunction', 'renderTimeoutMs', 'stateForBrowser', 'basePath', 'budgets'];
-// What `budgets` may limit: the build measures the first, `agent-ui check` the others (docs/BUILD.md, "Budgets").
-export const BUDGET_KEYS = ['pageGzipBytes', 'stateBytes', 'elements', 'listRows'];
+// What `budgets` may limit: the build measures the first two, `agent-ui check` the others (docs/BUILD.md, "Budgets").
+export const BUDGET_KEYS = ['pageGzipBytes', 'stylesheetsGzipBytes', 'stateBytes', 'elements', 'listRows'];
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isText = (value) => typeof value === 'string' && value !== '';
 
@@ -44,7 +44,7 @@ export const checkConfig = (config) => {
     else {
       for (const [key, value] of Object.entries(config.budgets)) {
         if (!BUDGET_KEYS.includes(key)) add(`budgets key "${key}"`, 'unknown limit', `${didYouMean(key, BUDGET_KEYS)}Allowed limits: ${BUDGET_KEYS.join(', ')}`);
-        else if (!Number.isInteger(value) || value < 1) add(`"budgets.${key}"`, 'must be a whole number, 1 or more', `Write budgets: { ${key}: ${key === 'listRows' ? 200 : key === 'elements' ? 2000 : 50000} }`);
+        else if (!Number.isInteger(value) || value < 1) add(`"budgets.${key}"`, 'must be a whole number, 1 or more', `Write budgets: { ${key}: ${key === 'listRows' ? 200 : key === 'elements' ? 2000 : key === 'stylesheetsGzipBytes' ? 15000 : 50000} }`);
       }
     }
   }

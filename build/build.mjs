@@ -61,6 +61,13 @@ export const build = (config) => {
       throw new BuildError(`budgets.pageGzipBytes: ${over.map(([name, page]) => `page "${name}" loads ${kilobytes(page.startupSize.gzipBytes)} gzip at startup (${page.chunksLoadedAtStartup.join(', ')})`).join('; ')}, over the budget of ${kilobytes(budgets.pageGzipBytes)}. Read the chunk report: load a heavy module with import() where it is used, move code a page does not need out of its imports, or raise the budget`);
     }
   }
+  if (budgets.stylesheetsGzipBytes !== undefined) {
+    const over = Object.entries(manifest.pages).filter(([, page]) => page.stylesheetsSize.gzipBytes > budgets.stylesheetsGzipBytes);
+    if (over.length) {
+      const kilobytes = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
+      throw new BuildError(`budgets.stylesheetsGzipBytes: ${over.map(([name, page]) => `page "${name}" loads ${kilobytes(page.stylesheetsSize.gzipBytes)} gzip of CSS at startup (${page.stylesheets.join(', ')})`).join('; ')}, over the budget of ${kilobytes(budgets.stylesheetsGzipBytes)}. Move styles only one page uses into its page.css, @import shared CSS only in the pages that use it, or raise the budget`);
+    }
+  }
   // Not written to manifest.json: what the build says about itself, printed by formatReport.
   return { ...manifest, warnings: findViewCodeInBrowserBundle(graph) };
 };

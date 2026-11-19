@@ -36,8 +36,8 @@ export interface BuildConfig {
   stateForBrowser?: ((state: Record<string, any>, request: RequestContext | null) => Record<string, any> | Promise<Record<string, any>>) | null;
   /** The path the site is served below, for example '/shop' (docs/BUILD.md, "A site below a base path"). Default: the root. */
   basePath?: string;
-  /** Limits that turn a page over them into an error (docs/BUILD.md, "Budgets"): pageGzipBytes fails the build; the others are problems of `agent-ui check`. */
-  budgets?: { pageGzipBytes?: number; stateBytes?: number; elements?: number; listRows?: number };
+  /** Limits that turn a page over them into an error (docs/BUILD.md, "Budgets"): pageGzipBytes and stylesheetsGzipBytes fail the build; the others are problems of `agent-ui check`. */
+  budgets?: { pageGzipBytes?: number; stylesheetsGzipBytes?: number; stateBytes?: number; elements?: number; listRows?: number };
 }
 /** The configuration after loadConfig: the user's options plus the pages, the entries the bundler builds from them and the configuration file they came from. */
 export interface LoadedConfig extends BuildConfig {

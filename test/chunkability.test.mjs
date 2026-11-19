@@ -44,6 +44,7 @@ const EXPECTED = {
   'src/follow.js': ['src/follow.js', 'src/spec-core.js'],
   // Both motion plugins share the primitives the runtime already loads (nextFrame, the page-plugin mark).
   'src/moves.js': ['src/moves.js', 'src/spec-core.js'],
+  'src/performance.js': ['src/performance.js', ...PRIMITIVES],
 };
 
 for (const [entry, modules] of Object.entries(EXPECTED)) {
