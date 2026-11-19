@@ -276,6 +276,8 @@ const createApp = (options, disposers) => {
   let replaying = false;
   let destroyed = false;
   const cleanups = []; // what plugins registered with onDestroy
+const leaveHandlers = []; // what plugins registered with onLeave
+let destroying = false; // the leave handlers are running: a destroy() they call is the one that is under way
   const replayHandlers = []; // what plugins registered with onReplay
 
   // Every error the runtime catches and does not throw again ends here: it is kept in `errors`, written to the console and handed to
@@ -293,6 +295,16 @@ const createApp = (options, disposers) => {
     if (startupReports) startupReports.push(report);
     else deliver(report);
     return message;
+  };
+  // The handlers of onLeave, in the order they were registered; one that throws is reported and the others still run.
+  const runLeaveHandlers = (reason) => {
+    for (const handler of leaveHandlers.slice()) {
+      try {
+        handler({ reason });
+      } catch (error) {
+        reportCaught(error);
+      }
+    }
   };
   const deliver = (report) => {
     for (const handler of errorHandlers) {
@@ -1214,7 +1226,10 @@ const createApp = (options, disposers) => {
     // Stops the app: its effects, its event listeners and the plugins' cleanups (onDestroy), then empties its root. Later
     // dispatches do nothing. Idempotent. A page that is replaced by another (soft navigation) is destroyed first.
     destroy: () => {
-      if (destroyed) return;
+      if (destroyed || destroying) return;
+      // The page is being left for good: what a plugin has to flush goes out now, while the app still answers (dispatch works).
+      destroying = true;
+      runLeaveHandlers('destroy');
       destroyed = true;
       for (const cleanup of cleanups.splice(0).reverse()) cleanup();
       disposers.forEach((dispose) => dispose());
@@ -1243,6 +1258,19 @@ const createApp = (options, disposers) => {
     onDestroy: (cleanup) => {
       if (destroyed) cleanup();
       else cleanups.push(cleanup);
+    },
+    // A plugin that has to flush what it holds when the page is left (an autosave, a dismissed notice) registers one handler for both ways a page
+    // is left: handler({ reason }) runs with 'pagehide' when the browser leaves the document (a link, a reload, a closed tab, the page going into
+    // the back/forward cache: more than once if it comes back) and with 'destroy' when the app is replaced by another page (a soft navigation) or
+    // destroyed. A soft navigation fires no pagehide, which is why one handler for both exists. Not called by a destroyed app's later leave.
+    onLeave: (handler) => {
+      if (destroyed) return;
+      leaveHandlers.push(handler);
+      if (leaveHandlers.length === 1 && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        const onPageHide = () => runLeaveHandlers('pagehide');
+        window.addEventListener('pagehide', onPageHide);
+        cleanups.push(() => window.removeEventListener?.('pagehide', onPageHide));
+      }
     },
     // A plugin that has something in flight (a request, a timer) hears that a replay starts, whether or not a key it watches changes.
     onReplay: (handler) => void replayHandlers.push(handler),

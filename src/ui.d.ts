@@ -160,6 +160,8 @@ export interface AppApi {
   readonly destroyed: boolean;
   /** For plugins that hold something outside the app (a timer, a request in flight, a window listener): called by destroy(). */
   onDestroy(cleanup: () => void): void;
+  /** For a plugin that flushes what it holds when the page is left (an autosave, a dismissed notice): called with `{ reason: 'pagehide' }` when the browser leaves the document (also when it goes into the back/forward cache, and again if it comes back and leaves) and with `{ reason: 'destroy' }` when the app is replaced by another page (a soft navigation fires no pagehide) or destroyed, while `dispatch` still works. A handler that throws is reported; the others still run. */
+  onLeave(handler: (leaving: { reason: 'pagehide' | 'destroy' }) => void): void;
   /** Calls the handler when replay() starts, so a plugin can drop what it has in flight (a request, a timer) even if no key it watches changes. */
   onReplay(handler: () => void): void;
   /** Calls the handler for every error the runtime catches and does not throw again. Returns a function that removes it. */

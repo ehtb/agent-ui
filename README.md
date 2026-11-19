@@ -13,7 +13,7 @@ agent-ui describes a UI as plain JSON, written with small typed builders. State 
 
 Because the page, its state and everything it can do are data, an agent can render, inspect and test a page in Node, in milliseconds, without a browser.
 
-agent-ui is small (about 53 KB, 14 KB gzipped), [dependency-free](package.json) and [extendable](#built-in-plugins).
+agent-ui is small (about 54 KB, 15 KB gzipped), [dependency-free](package.json) and [extendable](#built-in-plugins).
 
 ## Motivation
 

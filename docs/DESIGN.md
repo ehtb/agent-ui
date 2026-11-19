@@ -159,7 +159,7 @@ The criteria are what limits an agent, not a human. For each, what agent-ui offe
 | Edit locality | One named action or one spec node; one folder per page. |
 | Update cost | Fine-grained: 3 mutations per row toggle on the shim. |
 | Delivery | A zero-dependency pipeline, the runtime as a separately cached chunk, per-request rendering, and an optional static build. |
-| Runtime size | 14 KB gzip (53 KB raw) with identifiers unmangled, before any minifier (the table in section 3). |
+| Runtime size | 15 KB gzip (54 KB raw) with identifiers unmangled, before any minifier (the table in section 3). |
 | Training prior | None. Models have not seen this grammar. |
 
 Mechanisms that should favour agents **[hypothesis]**:

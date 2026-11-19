@@ -20,8 +20,8 @@ Production build (`agent-ui build`, validator and checks left out), in bytes. Ev
 
 | Chunk                                | Contains                                                                                                                                                                                                                  |            Size |            Gzip |         esbuild |  esbuild + gzip |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------: | --------------: | --------------: | --------------: |
-| `agent-ui`                           | the core runtime, every page                                                                                                                                                                                              |          54,316 |          14,683 |          25,119 |          10,244 |
-| `agent-ui-checkout-index-product-id` | the framework code the pages share: the page code, the head code (the navigation plugin copies the head of the next page, and the product page's `withHead` uses it too), resources, URL patterns and the shell code (`shell.js`, `syncApps`, the navigation plugin) |          50,685 |          14,126 |          26,279 |          10,654 |
+| `agent-ui`                           | the core runtime, every page                                                                                                                                                                                              |          55,697 |          15,221 |          25,119 |          10,244 |
+| `agent-ui-checkout-index-product-id` | the framework code the pages share: the page code, the head code (the navigation plugin copies the head of the next page, and the product page's `withHead` uses it too), resources, URL patterns and the shell code (`shell.js`, `syncApps`, the navigation plugin) |          51,746 |          14,493 |          26,279 |          10,654 |
 | `shared-checkout-index-product-id`   | the shop's own shared code: the cart, the catalog, the plugins and the shell's behavior (behavior only), the shell's content as data, and the shared stylesheet                                                            |           4,655 |           1,361 |           3,389 |           1,141 |
 | `index`                              | the list page's behavior and its finished spec                                                                                                                                                                            |           2,691 |           1,109 |           1,985 |             956 |
 | `product-id`                         | the product page's behavior and its finished spec                                                                                                                                                                         |           3,693 |           1,324 |           2,694 |           1,105 |
@@ -31,10 +31,10 @@ Production build (`agent-ui build`, validator and checks left out), in bytes. Ev
 
 | What a visitor downloads (JavaScript) |    Size |   Gzip | esbuild | esbuild + gzip |
 | ------------------------------------- | ------: | -----: | ------: | -------------: |
-| the list page                         | 112,347 | 31,279 |  56,772 |         22,995 |
-| the product page                      | 113,349 | 31,494 |  57,481 |         23,144 |
-| the checkout page                     | 115,916 | 32,166 |  59,623 |         23,796 |
-| all three pages as one bundle         | 118,907 | 33,715 |  64,302 |         25,857 |
+| the list page                         | 114,789 | 32,184 |  56,772 |         22,995 |
+| the product page                      | 115,791 | 32,399 |  57,481 |         23,144 |
+| the checkout page                     | 118,358 | 33,071 |  59,623 |         23,796 |
+| all three pages as one bundle         | 121,349 | 34,620 |  64,302 |         25,857 |
 
 **Why the framework's code and the shop's are two files.** They change at different times: the framework when you upgrade it, the shop's code on every deploy. In one file, a one-line change to `shared/cart.js` would make every returning visitor download the 10.7 KB (esbuild + gzip) of framework code again; as two files, they download the 1.1 KB of the shop's shared code and keep the rest. The price is one request more on the first visit, fetched in parallel with the others (`modulepreload`).
 
@@ -44,7 +44,7 @@ Downloaded once means one file with the same URL on every page: the browser fetc
 
 |                                  | Files                                          |   Size |   Gzip | esbuild | esbuild + gzip |
 | -------------------------------- | ---------------------------------------------- | -----: | -----: | ------: | -------------: |
-| **Downloaded once** (every page) | `agent-ui` + `agent-ui-checkout-index-product-id` + the shared chunk + its stylesheet | 106,969 | 29,737 |  55,468 |         22,413 |
+| **Downloaded once** (every page) | `agent-ui` + `agent-ui-checkout-index-product-id` + the shared chunk + its stylesheet | 109,411 | 30,642 |  55,468 |         22,413 |
 | **Only the list page**           | `index` + `index.css`                          |  2,944 |  1,271 |   2,222 |          1,133 |
 | **Only the product page**        | `product-id`                                   |  3,693 |  1,301 |   2,694 |          1,105 |
 | **Only the checkout page**       | `checkout` + `checkout.css`                    |  6,465 |  2,134 |   5,032 |          1,913 |

@@ -196,3 +196,76 @@ test('destroying the page leaves the shell and its slot in place, and a new page
   assert.equal(next.state().counter.count, 1);
   assert.equal(outer.state().frame.clicks, 0);
 });
+
+// ---------------------------------------------------------------------------------------------------- onLeave
+
+test('onLeave runs once when the app is destroyed, before it stops, so the handler can still dispatch and read', () => {
+  const seen = [];
+  const { ui, root } = mountSpec({
+    namespaces: counter,
+    spec: counterSpec,
+    plugins: [(api) => api.onLeave(({ reason }) => { seen.push([reason, api.destroyed, api.dispatch('counter.add', {}), api.state().counter.count]); })],
+  });
+  ui.destroy();
+  assert.deepEqual(seen, [['destroy', false, undefined, 1]], 'the app still answered');
+  assert.equal(ui.destroyed, true);
+  assert.equal(root.childNodes.length, 0);
+  ui.destroy();
+  assert.equal(seen.length, 1, 'a second destroy leaves nothing more to flush');
+  ui.onLeave(() => seen.push('late'));
+  assert.equal(seen.length, 1, 'a handler registered after the destroy is never called');
+});
+
+test('onLeave also runs at pagehide, every time it fires, and a soft navigation (destroy) fires none: one handler covers both', () => {
+  const original = globalThis.window;
+  const win = createWindow();
+  globalThis.window = win;
+  try {
+    const reasons = [];
+    const { ui } = mountSpec({ namespaces: counter, spec: counterSpec, plugins: [(api) => api.onLeave(({ reason }) => reasons.push(reason))] });
+    win.fireWindowEvent('pagehide', { persisted: true }); // into the back/forward cache
+    win.fireWindowEvent('pagehide', { persisted: false }); // and later left for good
+    assert.deepEqual(reasons, ['pagehide', 'pagehide']);
+    assert.equal(ui.destroyed, false, 'a pagehide does not destroy the app');
+    ui.destroy();
+    assert.deepEqual(reasons, ['pagehide', 'pagehide', 'destroy']);
+    win.fireWindowEvent('pagehide');
+    assert.equal(reasons.length, 3, 'the listener went with the app');
+  } finally {
+    globalThis.window = original;
+  }
+});
+
+test('the handlers of onLeave run in the order they were registered, one that throws is reported and the others still run, and a destroy they ask for is the one that is under way', () => {
+  const order = [];
+  const { ui } = mountSpec({
+    namespaces: counter,
+    spec: counterSpec,
+    plugins: [(api) => { api.onLeave(() => order.push('first')); api.onLeave(() => { throw new Error('flush failed'); }); api.onLeave(() => { order.push('third'); api.destroy(); }); }],
+  });
+  const logged = [];
+  const { error } = console;
+  console.error = (message) => logged.push(message);
+  try {
+    ui.destroy();
+  } finally {
+    console.error = error;
+  }
+  assert.deepEqual(order, ['first', 'third']);
+  assert.deepEqual(ui.errors, ['flush failed']);
+  assert.deepEqual(logged, ['flush failed']);
+  assert.equal(ui.destroyed, true);
+});
+
+test('without a window (a server render) onLeave registers nothing and runs only at destroy', () => {
+  const original = globalThis.window;
+  delete globalThis.window;
+  try {
+    const reasons = [];
+    const { ui } = mountSpec({ namespaces: counter, spec: counterSpec, plugins: [(api) => api.onLeave(({ reason }) => reasons.push(reason))] });
+    ui.destroy();
+    assert.deepEqual(reasons, ['destroy']);
+  } finally {
+    if (original !== undefined) globalThis.window = original;
+  }
+});
