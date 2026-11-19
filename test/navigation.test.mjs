@@ -650,11 +650,82 @@ test('softLinkTarget reads a soft link the way the click does: key, hash, and wh
 
 test('fetchPlainDocument answers the text of a plain page and the reason for anything else', async () => {
   const plain = await fetchPlainDocument(async () => htmlResponse('<p>x</p>'), '/x');
-  assert.deepEqual(plain, { text: '<p>x</p>' });
+  assert.deepEqual(plain, { text: '<p>x</p>', key: '/x' });
   assert.deepEqual(await fetchPlainDocument(async () => htmlResponse('', { ok: false, status: 404 }), '/x'), { reason: 'the answer is 404, not a plain page' });
-  assert.deepEqual(await fetchPlainDocument(async () => htmlResponse('', { redirected: true }), '/x'), { reason: 'the answer is a redirect, not a plain page' });
+  assert.deepEqual(await fetchPlainDocument(async () => htmlResponse('', { redirected: true }), '/x'), { reason: 'the answer is a redirect, not a plain page' }, 'a host that cannot say where a redirect led gets the reason');
   assert.deepEqual(await fetchPlainDocument(async () => ({ ...htmlResponse('x'), headers: { get: () => 'application/json' } }), '/x'), { reason: 'the answer is not HTML' });
   await assert.rejects(fetchPlainDocument(async () => { throw new Error('offline'); }, '/x'), /offline/);
+});
+
+// ---- a redirect of the server ----------------------------------------------------------------------------------------------
+
+// What the browser's fetch answers after following a redirect: the document of the place it ended at, `redirected`, and its URL.
+const redirectedTo = (to, text = documents[to.split(/[?#]/)[0]]) => htmlResponse(text, { redirected: true, url: `http://localhost${to}` });
+
+test('fetchPlainDocument follows a redirect to this site, says where it ended, and refuses one that leaves the site or the base path', async () => {
+  const options = { origin: 'http://localhost', basePath: '' };
+  assert.deepEqual(await fetchPlainDocument(async () => redirectedTo('/b?y=2', '<p>b</p>'), '/old?x=1', options), { text: '<p>b</p>', key: '/b?y=2' });
+  assert.deepEqual(await fetchPlainDocument(async () => htmlResponse('<p>x</p>', { redirected: true, url: 'https://example.com/b' }), '/old', options), { reason: 'the answer is a redirect to a place outside this site, not a plain page' });
+  assert.deepEqual(await fetchPlainDocument(async () => htmlResponse('<p>x</p>', { redirected: true, url: 'not a url' }), '/old', options), { reason: 'the answer is a redirect to a place outside this site, not a plain page' });
+  assert.deepEqual(await fetchPlainDocument(async () => htmlResponse('x', { redirected: true, url: 'http://localhost/gone', ok: false, status: 404 }), '/old', options), { reason: 'the answer is 404, not a plain page (after a redirect to /gone)' });
+  // Below a base path the key is the site's own path, and a redirect out of the base leaves the site's pages.
+  const below = { origin: 'http://localhost', basePath: '/shop' };
+  assert.deepEqual(await fetchPlainDocument(async () => htmlResponse('<p>x</p>', { redirected: true, url: 'http://localhost/shop/b?y=2' }), '/old', below), { text: '<p>x</p>', key: '/b?y=2' });
+  assert.deepEqual(await fetchPlainDocument(async () => htmlResponse('<p>x</p>', { redirected: true, url: 'http://localhost/elsewhere' }), '/old', below), { reason: 'the answer is a redirect to a place outside this site, not a plain page' });
+});
+
+test('a soft navigation follows a redirect to another page of the site: that page is shown in the shell that stays, at its own address', async () => {
+  await goHome();
+  const { shellApp } = currentPage();
+  const before = currentPage();
+  const assignedBefore = assigned.length;
+  const historyBefore = history.length;
+  answer = async (url) => (url === '/old?x=1' ? redirectedTo('/b?y=2') : url in documents ? htmlResponse(documents[url]) : htmlResponse('', { ok: false, status: 404 }));
+  currentPage().ui.dispatch('route.go', { href: '/old?x=1#details' });
+  await until(() => currentPage().ui !== before.ui, 'the page the redirect ends at');
+  const now = currentPage();
+  assert.equal(now.entry.path, '/b', 'the page of the place the redirect ends at');
+  assert.equal(now.shellApp, shellApp, 'in the shell that stayed');
+  assert.deepEqual(history.slice(historyBefore), ['/b?y=2#details'], 'the address is the place it ended at, and the #hash of the link stays');
+  assert.equal(location.pathname, '/b');
+  assert.equal(assigned.length, assignedBefore, 'no page load');
+  assert.equal(shellApp.state().route.path, '/b', 'the shell was told the path of the page that is showing');
+  restoreAnswers();
+  await goHome();
+});
+
+test('a redirect to a page that has another shell is loaded at the place it ends at, and one that leaves the site is loaded as it was linked', async () => {
+  await goHome();
+  const { shellApp } = currentPage();
+  const warningsBefore = warnings.length;
+  documents['/c'] = documentOf({ entry: '/assets/c.js', stylesheets: ['/assets/shared.css'] }); // an earlier test left it without a script
+  answer = async (url) => (url === '/old-c' ? redirectedTo('/c') : url === '/old-away' ? htmlResponse('x', { redirected: true, url: 'https://example.com/b' }) : htmlResponse(documents[url]));
+  currentPage().ui.dispatch('route.go', { href: '/old-c' });
+  await until(() => assigned.at(-1) === '/c', 'the normal page load of the place the redirect ends at');
+  assert.match(warnings[warningsBefore], /soft navigation to \/c: that page has no shell, and this one has "main"\. Loading it as a normal page/);
+  currentPage().ui.dispatch('route.go', { href: '/old-away' });
+  await until(() => assigned.at(-1) === '/old-away', 'the normal page load of the link');
+  assert.match(warnings.at(-1), /soft navigation to \/old-away: the answer is a redirect to a place outside this site, not a plain page/);
+  assert.equal(location.pathname, '/', 'the address never moved for a page that was not shown');
+  restoreAnswers();
+});
+
+test('a hover follows the redirect too, and the click takes that document and shows the place it ended at without fetching again', async () => {
+  await goHome();
+  const before = currentPage();
+  const historyBefore = history.length;
+  answer = async (url) => (url === '/b?old=1' ? redirectedTo('/b') : htmlResponse(documents[url]));
+  const link = byDataId('to-b');
+  link.setAttribute('href', '/b?old=1');
+  hover(link);
+  await until(() => fetchedCount('/b?old=1') === 1, 'the hover to fetch the old address');
+  click(link);
+  await until(() => currentPage().ui !== before.ui, 'the page the redirect ends at');
+  assert.equal(fetchedCount('/b?old=1'), 1, 'the click took the document of the hover');
+  assert.deepEqual(history.slice(historyBefore), ['/b'], 'and shows the place it ended at');
+  link.setAttribute('href', '/b');
+  restoreAnswers();
+  await goHome();
 });
 
 test('destroying the shell removes the listeners of the navigation plugin, and a navigation still waiting changes nothing when it ends', async () => {

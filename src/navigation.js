@@ -29,9 +29,12 @@
 //      entry a soft navigation pushes starts with only its key, as the entry of a page load starts with no state.
 //      That element is a region named by the new title, and an element whose HTML id is agent-ui-announcer (a live region the
 //      site provides) receives the title too, so a swap announces itself as a page load does.
-// Anything that goes wrong, or is not the same as a page load (an answer that is not 200 or not HTML, a redirect, a page of another shell,
-// a failure while importing or starting), ends in a normal page load of the same URL, with the reason in the console: a soft link
-// never leaves the visitor on a half-changed page. Back and forward do the same swap for the address they return to.
+// A redirect of the server that leads to another page of this site is followed, as a page load follows it: the page the redirect ends at
+// is the one that is shown, and the address is that page's (a link to /old that the server sends to /new shows /new, in the shell that
+// stays). Anything that goes wrong, or is not the same as a page load (an answer that is not 200 or not HTML, a redirect to another site,
+// a page of another shell, a failure while importing or starting), ends in a normal page load, with the reason in the console: a soft link
+// never leaves the visitor on a half-changed page. A page that cannot be shown in place after a redirect is loaded at the place the redirect
+// ends at. Back and forward do the same swap for the address they return to.
 //
 // A modifier key, a middle click, `target`, `download`, another origin and a link to a place on this page are left to the browser.
 // What it is not: a router (there is no route list: the server's documents are the source) and not a second way to hold state (a swap
@@ -58,16 +61,37 @@ import { fail } from './messages.js';
 // rendered with one), the file of the page's entry, and the page's stylesheets.
 export const readDocument = (text) => ({ state: readStateScript(text), entryUrl: readModuleScript(text), stylesheets: readStylesheets(text) });
 
-// Fetches the document of a link the way a page load would get it. Answers { text } for a plain page and { reason } for anything a
+// Fetches the document of a link the way a page load would get it. Answers { text, key } for a plain page and { reason } for anything a
 // soft navigation cannot show in place (the reason is what the console says when it loads the page normally); a fetch that throws
-// throws. The one definition of "a plain page", used by the navigation and by withPrefetch.
-export const fetchPlainDocument = async (fetchFunction, key) => {
+// throws. `key` is where the document really came from, the site's path and search: the link's own, or the place the server redirected to.
+// A redirect is followed when the place it leads to is on this site (`origin` and `basePath` say which one that is) and answers a plain
+// page itself, as a page load would end there; a redirect to another site, or one that cannot be told (no `origin`, as in a host that
+// does not say), is the reason "the answer is a redirect". The one definition of "a plain page", used by the navigation and by withPrefetch.
+export const fetchPlainDocument = async (fetchFunction, key, { origin = null, basePath = '' } = {}) => {
   const response = await fetchFunction(key, { headers: { accept: 'text/html' } });
-  if (!response.ok || response.redirected) return { reason: `the answer is ${response.redirected ? 'a redirect' : response.status}, not a plain page` };
+  let answeredKey = key;
+  if (response.redirected) {
+    answeredKey = origin && response.url ? sitePathOfUrl(response.url, origin, basePath) : null;
+    if (answeredKey === null) return { reason: `the answer is a redirect${origin && response.url ? ' to a place outside this site' : ''}, not a plain page` };
+  }
+  if (!response.ok) return { reason: `the answer is ${response.status}, not a plain page${answeredKey === key ? '' : ` (after a redirect to ${answeredKey})`}` };
   if (!/text\/html/.test(response.headers.get('content-type') ?? '')) return { reason: 'the answer is not HTML' };
   const text = await response.text();
   if (typeof text !== 'string') return { reason: 'the answer has no text' };
-  return { text };
+  return { text, key: answeredKey };
+};
+
+// The site's path and search of a URL the server answered from, or null when it is another origin or outside the base path.
+const sitePathOfUrl = (href, origin, basePath) => {
+  let url;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
+  if (url.origin !== origin) return null;
+  const sitePath = withoutBase(basePath, url.pathname);
+  return sitePath === null ? null : `${sitePath}${url.search}`;
 };
 
 // What a plugin may add to the navigation (api.extendNavigation): where a document comes from, and how the swap is run.
@@ -167,24 +191,35 @@ export const navigation = ({ win, fetchFunction, importModule = (url) => import(
     } catch {
       return console.error(`soft navigation to ${href}: not a valid URL. Use an http(s) or relative URL`);
     }
-    const target = `${url.pathname}${url.search}`;
-    const wireHref = `${target}${url.hash}`;
+    let target = `${url.pathname}${url.search}`;
+    let wireHref = `${target}${url.hash}`;
     if (url.origin !== win.location.origin) return hardLoad(href, 'it is another origin'); // only this site's pages can be shown in place
-    const sitePath = withoutBase(basePath, url.pathname);
+    let sitePath = withoutBase(basePath, url.pathname);
     if (sitePath === null) return hardLoad(wireHref, `it is outside the base path ${basePath}`);
     try {
       const key = `${sitePath}${url.search}`;
       let text = null;
+      let answeredKey = key; // where the document came from: a redirect moves it
       for (const source of documentSources) {
-        text = (await source(key)) ?? null; // a document brought ahead of the click; null: fetch it now
+        const found = (await source(key)) ?? null; // a document brought ahead of the click (its text, or { text, key }); null: fetch it now
         if (number !== latest) return;
+        if (typeof found === 'string') text = found;
+        else if (found && typeof found.text === 'string') [text, answeredKey] = [found.text, found.key ?? key];
         if (typeof text === 'string') break;
       }
       if (typeof text !== 'string') {
-        const answer = await fetchPlainDocument(fetchFunction, key);
+        const answer = await fetchPlainDocument(fetchFunction, key, { origin: win.location.origin, basePath });
         if (number !== latest) return;
         if (answer.reason) return hardLoad(wireHref, answer.reason);
-        text = answer.text;
+        [text, answeredKey] = [answer.text, answer.key];
+      }
+      if (answeredKey !== key) {
+        // The server redirected, and the document is the one a page load would end at. The address is that place's (the link's #hash stays, as
+        // a browser keeps it), and a page that cannot be shown in place is loaded at that address, not by way of the redirect again.
+        const placed = new URL(withBase(basePath, answeredKey), win.location.href);
+        target = `${placed.pathname}${placed.search}`;
+        wireHref = `${target}${url.hash}`;
+        sitePath = withoutBase(basePath, placed.pathname);
       }
       const { state, entryUrl, stylesheets } = readDocument(text);
       if (number !== latest) return;

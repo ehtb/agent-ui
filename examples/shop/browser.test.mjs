@@ -3,6 +3,7 @@
 // the document, so this one does. It skips itself when there is no Chrome (set CHROME_PATH to use another build).
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchBrowser, serveSite } from '@ehtb/agent-ui/testing/browser.mjs';
@@ -93,4 +94,32 @@ test('the first page takes over the markup the server wrote: no element of the s
   assert.match(await evaluate(`document.querySelector('[data-id="nav-cart"]').textContent`), /^Cart \(\d+\)$/, 'the shell shows the cart of the page it took over (the server holds the cart, so earlier tests may have filled it)');
   await evaluate(`document.querySelector('[data-id="nav-checkout"]').click()`);
   await until(`location.pathname === '/checkout' && document.querySelector('[data-id="checkout-title"]')`, 'the checkout page, by a soft link of the adopted shell');
+});
+
+test('a redirect of the host to another page of the site is followed in place: the page it ends at is shown, in the shell that stays, at its address', { skip: browser ? false : 'no Chrome found (set CHROME_PATH)' }, async () => {
+  const site = await serveSite({ projectRoot, outDir: '.output-browser-redirect' });
+  cleanups.push(site.close);
+  // The host in front of the render server, as a real one is: it answers an address the shop used to have with a redirect, and passes the rest on.
+  const front = createServer(async (request, response) => {
+    if (request.url === '/old-checkout') {
+      response.writeHead(301, { location: '/checkout' });
+      return response.end();
+    }
+    const upstream = await fetch(`${site.url}${request.url}`, { method: request.method, headers: { accept: request.headers.accept ?? '*/*' } });
+    const headers = Object.fromEntries([...upstream.headers].filter(([name]) => !['content-encoding', 'content-length', 'transfer-encoding'].includes(name)));
+    response.writeHead(upstream.status, headers);
+    response.end(Buffer.from(await upstream.arrayBuffer()));
+  });
+  await new Promise((resolve) => front.listen(0, '127.0.0.1', resolve));
+  cleanups.push(() => front.close());
+  const base = `http://127.0.0.1:${front.address().port}`;
+
+  const { evaluate, until, report } = await browser.open(`${base}/`);
+  await evaluate(`window.__document = 'the first one'; document.querySelector('[data-id="shop-header"]').__mark = 1; window.__firstShell = window.__shell; true`);
+  await evaluate(`(() => { const link = document.createElement('a'); link.href = '/old-checkout'; link.setAttribute('data-soft', ''); link.textContent = 'old'; document.querySelector('#app').append(link); link.click(); })()`);
+  await until(`location.pathname === '/checkout' && document.querySelector('[data-id="checkout-form"]')`, 'the checkout page the redirect ends at');
+  assert.equal(await evaluate('window.__document'), 'the first one', 'the document is still the first one: the redirect was followed in place');
+  assert.equal(await evaluate(`document.querySelector('[data-id="shop-header"]').__mark === 1 && window.__shell === window.__firstShell`), true, 'and the shell stayed');
+  assert.deepEqual(report.loads, [`${base}/`], 'the browser loaded no other document');
+  assert.deepEqual(report.console, [], 'and said nothing');
 });

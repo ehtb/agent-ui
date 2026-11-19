@@ -10,8 +10,9 @@
 //   * the document is the same one the click would fetch, so the page that starts is the page a load would show. A document older than a
 //     few seconds is not used (the server may have changed since the hover), and the latest eight are kept, so a page of links does
 //     not hold a document for every link on it;
-//   * a hover that fails (a status that is not 200, a redirect, a document that is not HTML, a network error, a cancelled fetch) is
-//     dropped without a word, and the click fetches again, so the visitor sees what a click without a hover would have seen;
+//   * a redirect of the server to another page of this site is followed, as the click would follow it, and the click shows the page it
+//     ends at; a hover that fails (a status that is not 200, a redirect to another site, a document that is not HTML, a network error, a
+//     cancelled fetch) is dropped without a word, and the click fetches again, so the visitor sees what a click without a hover would have seen;
 //   * once the document is there, the page's entry file is hinted to the browser (`<link rel="modulepreload">`), so the script that
 //     the click has to import next is already loading or loaded.
 // Every hover on a soft link makes the server render a page: a site whose pages are expensive to render, or that lists hundreds of
@@ -24,19 +25,19 @@ const MAX_PREFETCHES = 8;
 const MAX_AGE = 5000; // ms
 
 // `now` is injectable, for tests that must age a document.
-export const prefetch = ({ win, fetchFunction, now = () => Date.now() }) => (api) => {
+export const prefetch = ({ win, fetchFunction, basePath = '', now = () => Date.now() }) => (api) => {
   if (!win.history) return; // a server renders the shell too, and has no visitor to hover: there is nothing to do
   if (typeof api.extendNavigation !== 'function') {
     fail('withPrefetch', 'the shell has no navigation to extend', 'List withNavigation before withPrefetch in the plugins of defineShell: plugins: [withNavigation, withPrefetch]');
   }
   const document = win.document;
-  const prefetches = new Map(); // key (the site's path and search) -> { at, text: promise of the document's text, or null }
+  const prefetches = new Map(); // key (the site's path and search) -> { at, text: promise of { text, key } (key: where a redirect led), or null }
   const hinted = new Set(); // the entry files already hinted
 
   const fetchText = async (key) => {
     try {
-      const answer = await fetchPlainDocument(fetchFunction, key);
-      return answer.text ?? null;
+      const answer = await fetchPlainDocument(fetchFunction, key, { origin: win.location.origin, basePath });
+      return answer.text === undefined ? null : { text: answer.text, key: answer.key };
     } catch {
       return null; // a failed or cancelled fetch is fetched again at the click, which shows the real reason
     }
@@ -62,13 +63,13 @@ export const prefetch = ({ win, fetchFunction, now = () => Date.now() }) => (api
     prefetches.delete(link.key); // a stale one is replaced, and moves to the end of the order
     if (prefetches.size >= MAX_PREFETCHES) prefetches.delete(prefetches.keys().next().value);
     const entry = { at: now(), text: null };
-    entry.text = fetchText(link.key).then((text) => {
-      if (text === null) {
+    entry.text = fetchText(link.key).then((fetched) => {
+      if (fetched === null) {
         if (prefetches.get(link.key) === entry) prefetches.delete(link.key);
       } else {
-        hintEntry(text);
+        hintEntry(fetched.text);
       }
-      return text;
+      return fetched;
     });
     prefetches.set(link.key, entry);
   };
@@ -89,6 +90,6 @@ export const prefetch = ({ win, fetchFunction, now = () => Date.now() }) => (api
 };
 
 // The plugin as a shell lists it (`plugins: [withNavigation, withPrefetch]`).
-export const withPrefetch = markPagePlugin(function withPrefetch({ win, fetchFunction }) {
-  return prefetch({ win, fetchFunction });
+export const withPrefetch = markPagePlugin(function withPrefetch({ win, fetchFunction, basePath }) {
+  return prefetch({ win, fetchFunction, basePath });
 });
