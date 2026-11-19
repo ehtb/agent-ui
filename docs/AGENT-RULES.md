@@ -188,7 +188,7 @@ assertNoErrors(ui);
 - No modal/popover component with a focus trap (copy recipe `modal`), no file-upload parser or `multipart` body, and no SSE or WebSocket endpoint. Receive uploads and long-lived connections in the host server.
 - No built-in internationalization, locale-aware URLs or right-to-left layout. Text and `dir` are ordinary state and attributes; the project owns the catalogue.
 - No scroll restoration inside scrolling containers (the window's position is restored on back and forward). A site below a path is `basePath` in `build.config.mjs`; write every URL of the site as if it were at the root.
-- No SVG beyond icons and simple drawings: `svg`, `g`, `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, `polygon`, `use`. A chart is a library drawn by a plugin (recipe `draw-into-element`), no canvas or media tags.
+- No `script`, `style` or `switch` in an SVG, no `xmlns` or `xlink:href` (the namespace is put there for you; `href` is the attribute), no canvas or media tags. Text, gradients, filters and `foreignObject` are in the grammar and checked (`docs/API.md`, section 3, "SVG"; recipes `svg-icons`, `svg-chart`); a chart with zoom or thousands of marks is a library drawn by a plugin (recipe `draw-into-element`).
 - No TypeScript compile step. The package ships hand-written `.d.ts` files, so `// @ts-check` gives editor checking without a build; `examples/with-typescript` is a checked app.
 - No session store, auth flow or CSP policy. The render server passes the request to `initialStateFor`, `stateForBrowser` and `transformResponse`; keep the session token in an `HttpOnly` cookie set by the API or a form, and write the policy in your server.
 

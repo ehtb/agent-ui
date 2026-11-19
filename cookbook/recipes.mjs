@@ -81,8 +81,14 @@ export const recipes = [
   {
     name: 'svg-icons',
     title: 'Icons and a small chart in SVG',
-    use: 'An icon next to text is `aria-hidden`, sized with `1em` and coloured with `currentColor`; an icon used many times comes from a sprite in public/ with `use`; a drawing that says something is `role: \'img\'` with an `aria-label`. What is drawn from data (the stars, the points of a line) is a derived value. A large or interactive chart belongs to a library drawn by a plugin (recipe `draw-into-element`).',
+    use: 'An icon next to text is `aria-hidden`, sized with `1em` and coloured with `currentColor`; an icon used many times comes from a sprite in public/ with `use`; a drawing that says something is `role: \'img\'` with an `aria-label`. What is drawn from data (the stars, the points of a line) is a derived value. A chart with labels, a gradient and tooltips is recipe `svg-chart`; one with zoom or thousands of marks belongs to a library drawn by a plugin (recipe `draw-into-element`).',
     files: ['pages/svg-icons/page.js', 'pages/svg-icons/view.js', 'public/icons.svg'],
+  },
+  {
+    name: 'svg-chart',
+    title: 'A bar chart in SVG: bars from data, a gradient, axis labels and a tooltip on each bar',
+    use: 'A chart that fits in the spec. The position and height of each bar and the label above the picked one are derived, one display row per bar, and the template reads them; `text` draws the labels, `linearGradient` (referred to by `domId`) fills the bars, a `title` inside a shape is its tooltip, and the `svg` is `role: \'img\'` with a summary bound to state, with the same numbers in buttons that also pick a bar from the keyboard. A chart with zoom, pointer-following tooltips or thousands of marks is a library drawn by a plugin (recipe `draw-into-element`).',
+    files: ['pages/svg-chart/page.js', 'pages/svg-chart/view.js', 'pages/svg-chart/page.css'],
   },
   {
     name: 'server-hooks',

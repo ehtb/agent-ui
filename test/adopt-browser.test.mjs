@@ -135,3 +135,35 @@ test('in Chrome a nesting the HTML parser rewrites (a row straight in a table) e
   assert.deepEqual(kept.changes, [], 'the same table written the way a parser keeps it is taken over whole');
   assert.deepEqual(kept.reported, []);
 });
+
+test('in Chrome an svg with text, a gradient, a link and a foreignObject is taken over whole: the parser gives each element its namespace and the case of its name, and nothing is made again', { skip }, async () => {
+  const elements = await import('../src/spec.js');
+  const { svg, defs, linearGradient, stop, text, tspan, a, rect, circle, title, foreignObject, filter, feGaussianBlur } = elements;
+  const namespaces = { chart: { state: { total: 42 } } };
+  const spec = div(
+    { id: 'root' },
+    svg(
+      { id: 'drawing', viewBox: '0 0 100 50', role: 'img', 'aria-label': 'Sales' },
+      defs(null, linearGradient({ id: 'gradient', domId: 'fade', gradientUnits: 'userSpaceOnUse' }, stop({ offset: '0%', 'stop-color': 'red' }), stop({ offset: '100%', 'stop-color': 'blue' })), filter({ id: 'filter', domId: 'soft' }, feGaussianBlur({ stdDeviation: 2 }))),
+      rect({ id: 'bar', width: 40, height: 20, fill: 'url(#fade)', filter: 'url(#soft)' }),
+      circle({ id: 'dot', r: 3 }, title({ id: 'dot-title' }, 'A point')),
+      text({ id: 'label', x: 5, y: 10, 'text-anchor': 'middle' }, 'Total ', state('chart.total'), tspan({ id: 'unit' }, ' units')),
+      a({ id: 'link', href: '/detail' }, text({ id: 'link-text', x: 5, y: 20 }, 'Detail')),
+      foreignObject({ id: 'note', x: 0, y: 25, width: 50, height: 20 }, div({ id: 'inside' }, 'html in svg', span({ id: 'inside-span' }, '!'))),
+    ),
+    p({ id: 'after' }, 'after'),
+  );
+  const { changes, reported, evaluate, text: textOf } = await run({ namespaces, spec });
+  assert.deepEqual(changes, [], 'no element was added or removed');
+  assert.deepEqual(reported, []);
+  const namespaceOf = (id) => evaluate(`document.querySelector('[data-id="${id}"]').namespaceURI`);
+  const svgNamespace = 'http://www.w3.org/2000/svg';
+  for (const id of ['drawing', 'gradient', 'filter', 'bar', 'dot', 'dot-title', 'label', 'unit', 'link', 'link-text', 'note']) assert.equal(await namespaceOf(id), svgNamespace, `${id} is an SVG element`);
+  for (const id of ['inside', 'inside-span', 'after']) assert.equal(await namespaceOf(id), 'http://www.w3.org/1999/xhtml', `${id} is an HTML element`);
+  assert.equal(await evaluate(`document.querySelector('[data-id="gradient"]').localName`), 'linearGradient', 'the parser gave the name its case back');
+  assert.equal(await evaluate(`document.querySelector('[data-id="note"]').localName`), 'foreignObject');
+  assert.equal(await evaluate(`document.querySelector('[data-id="gradient"]').getAttribute('gradientUnits')`), 'userSpaceOnUse');
+  assert.equal(await textOf('label'), 'Total 42 units');
+  assert.equal(await evaluate(`document.querySelector('[data-id="after"]').textContent`), 'after', 'what follows the svg was taken over');
+  assert.equal(await evaluate(`document.querySelector('[data-id="bar"]').getBBox().width`), 40, 'the browser draws it');
+});

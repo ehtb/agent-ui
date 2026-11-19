@@ -7,7 +7,8 @@ import { DomElement } from '../src/server-dom.js';
 import { mountSpec, outlineById } from './support/helpers.mjs';
 
 const { grammar, validate } = await import('../src/ui.js');
-const { button, circle, div, g, path, state, svg, use } = await import('../src/spec.js');
+const { button, circle, div, each, g, path, state, svg, use, when } = await import('../src/spec.js');
+const elements = await import('../src/spec.js'); // every builder, for the SVG tests: elements.text(...), elements.linearGradient(...)
 
 const textOf = (ui, id) => outlineById(ui.outline(), id)?.text;
 const spanWith = (id, binding) => ({ tag: 'span', id, children: binding });
@@ -500,16 +501,162 @@ test('svg: drawn in the SVG namespace, rendered on the server, its shapes and at
   ui.destroy();
 });
 
-test('svg rules: shapes only inside an svg, only shapes and no text inside one, a label or aria-hidden, svg attributes on svg tags', () => {
+test('svg rules: SVG tags only inside an svg, no HTML inside one, a label or aria-hidden, svg attributes on svg tags', () => {
   const problems = (spec) => validate(spec, {});
   assert.deepEqual(problems(svg({ viewBox: '0 0 24 24', role: 'img', 'aria-label': 'Done' }, g(null, path({ d: 'M0 0' })))), []);
   assert.deepEqual(problems({ tag: 'div', children: { tag: 'path', props: { d: 'M0 0' } } }), ["$.0: path is drawn inside an svg. Put it in svg({ viewBox: '0 0 24 24', 'aria-hidden': 'true' }, ...)"]);
-  assert.deepEqual(problems({ tag: 'svg', props: { 'aria-hidden': 'true' }, children: [{ tag: 'span', children: 'x' }] }), ['$.0: an svg holds only g, path, circle, ellipse, rect, line, polyline, polygon, use, not span. Put the span next to the svg', '$.0.0: an svg holds no text. Put the text next to the svg, or say it with aria-label on the svg']);
+  assert.deepEqual(problems({ tag: 'svg', props: { 'aria-hidden': 'true' }, children: [{ tag: 'span', children: 'x' }] }), ['$.0: an svg holds SVG tags (grammar.svgTags), not span. Put the span next to the svg, or inside a foreignObject']);
   assert.deepEqual(problems({ tag: 'svg', children: { tag: 'path', props: { d: 'M0 0' } } }), ["$: svg needs aria-label with role: 'img' (a drawing that says something) or 'aria-hidden': 'true' (a decorative icon next to text that says it)"]);
   assert.deepEqual(problems({ tag: 'svg', props: { 'aria-label': 'Done' } }), ["$: svg has aria-label but not role: 'img'. Write role: 'img' with the label, so assistive technology reads the drawing as one image with that name"]);
   assert.deepEqual(problems({ tag: 'div', props: { fill: 'red' }, children: 'x' }), ['$.props.fill: fill is an attribute of an svg drawing, and this is a div. Put it on the svg or one of its shapes, or style the div with CSS']);
-  assert.deepEqual(problems({ tag: 'svg', props: { 'aria-hidden': 'true' }, children: { tag: 'path', props: { d: 'M0 0' }, children: 'x' } }), ['$.0: path cannot have children', '$.0.0: an svg holds no text. Put the text next to the svg, or say it with aria-label on the svg']);
+  assert.deepEqual(problems({ tag: 'svg', props: { 'aria-hidden': 'true' }, children: { tag: 'path', props: { d: 'M0 0' }, children: 'x' } }), ['$.0.0: text inside <path>, which holds no text. Put the text in text, tspan, textPath, title or desc, or next to the svg']);
+  assert.deepEqual(problems({ tag: 'svg', props: { 'aria-hidden': 'true' }, children: 'x' }), ['$.0: text inside <svg>, which holds no text. Put the text in text, tspan, textPath, title or desc, or next to the svg']);
   assert.match(problems({ tag: 'svg', props: { 'aria-hidden': 'true', viewbox: '0 0 1 1' } })[0], /unknown attribute "viewbox"\. Did you mean "viewBox"\?/);
   assert.throws(() => div({ fill: 'red' }, 'x'), /div\(\.\.\.\): fill is an attribute of an svg drawing, and this is a div\. Put it on the svg or one of its shapes, or style the div with CSS/);
-  assert.throws(() => path({ d: 'M0 0' }, 'x'), /path cannot have children/);
 });
+
+// What the grammar lets each SVG element hold: text in the text elements, the standard's own content model for the rest.
+const chart = (...children) => svg({ viewBox: '0 0 100 50', role: 'img', 'aria-label': 'Chart' }, ...children);
+
+test('svg text: text, tspan, textPath, title and desc hold text (a string or a binding); nothing else in an svg does', () => {
+  const problems = (spec) => validate(spec, { namespaces: { chart: { state: { label: 'Sales' } } } });
+  const svgs = elements;
+  assert.deepEqual(problems(chart(svgs.title(null, 'Sales'), svgs.desc(null, 'Sales by month'), svgs.text({ x: 5, y: 10, 'text-anchor': 'middle', 'font-size': 4 }, state('chart.label'), svgs.tspan({ dy: 1, 'font-weight': 'bold' }, ' total')), svgs.defs(null, svgs.path({ id: 'curve', d: 'M0 0' })), svgs.text(null, svgs.textPath({ href: '#curve', startOffset: '10%' }, 'along'), svgs.a({ href: '/more' }, svgs.tspan(null, 'link'))))), []);
+  assert.deepEqual(problems(chart(g(null, 'x'))), ['$.0.0: text inside <g>, which holds no text. Put the text in text, tspan, textPath, title or desc, or next to the svg']);
+  assert.deepEqual(problems(chart(svgs.text(null, svgs.rect({ width: 1, height: 1 })))), ['$.0.0: text holds only tspan, textPath, a, title, desc, animate, animateTransform, set and animateMotion, not rect. Put the rect in a g, a defs or the svg']);
+  assert.deepEqual(problems(chart(svgs.title(null, svgs.tspan(null, 'x')))), ['$.0.0: tspan stands inside text, tspan, textPath or a, not inside title. Move it there']);
+});
+
+test('svg: an animation along a path may be in text, and an HTML element in an svg is one problem, not one for everything it holds', () => {
+  const problems = (spec) => validate(spec, {});
+  assert.deepEqual(problems(chart(elements.text(null, elements.tspan(null, 'x'), elements.animateMotion({ dur: '2s' })))), []);
+  assert.deepEqual(problems(chart(div(null, path({ d: 'M0 0' }), 'text'))), ['$.0: an svg holds SVG tags (grammar.svgTags), not div. Put the div next to the svg, or inside a foreignObject']);
+});
+
+test('svg content model: a stop in a gradient, a filter primitive in a filter, a title in a shape; and where each tag may not stand', () => {
+  const problems = (spec) => validate(spec, {});
+  const element = elements;
+  const fine = chart(
+    element.defs(null,
+      element.linearGradient({ id: 'fade', x1: 0, y1: 0, x2: 0, y2: 1, gradientUnits: 'objectBoundingBox' }, element.stop({ offset: '0%', 'stop-color': 'red' }), element.stop({ offset: '100%', 'stop-opacity': 0 })),
+      element.radialGradient({ id: 'glow', fx: '50%' }, element.stop({ offset: 0 })),
+      element.pattern({ id: 'dots', width: 4, height: 4, patternUnits: 'userSpaceOnUse' }, element.circle({ cx: 1, cy: 1, r: 1 })),
+      element.clipPath({ id: 'clip', clipPathUnits: 'userSpaceOnUse' }, element.rect({ width: 10, height: 10 })),
+      element.mask({ id: 'veil' }, element.rect({ width: 10, height: 10, fill: 'white' })),
+      element.marker({ id: 'arrow', markerWidth: 4, markerHeight: 4, refX: 2, refY: 2, orient: 'auto' }, element.path({ d: 'M0 0L4 2L0 4z' })),
+      element.symbol({ id: 'star', viewBox: '0 0 10 10' }, element.path({ d: 'M5 0L6 4H10L7 6L8 10L5 8L2 10L3 6L0 4H4z' })),
+      element.filter({ id: 'soft', filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse' },
+        element.feGaussianBlur({ in: 'SourceGraphic', stdDeviation: 2, result: 'blur' }),
+        element.feOffset({ in: 'blur', dx: 1, dy: 1 }),
+        element.feColorMatrix({ type: 'saturate', values: '0.5' }),
+        element.feComponentTransfer(null, element.feFuncR({ type: 'linear', slope: 0.5, intercept: 0.1 }), element.feFuncA({ type: 'table', tableValues: '0 1' })),
+        element.feMerge(null, element.feMergeNode({ in: 'blur' }), element.feMergeNode({ in: 'SourceGraphic' })),
+        element.feDiffuseLighting({ surfaceScale: 2, diffuseConstant: 1 }, element.feDistantLight({ azimuth: 45, elevation: 60 })),
+        element.feTurbulence({ baseFrequency: 0.05, numOctaves: 2, seed: 3, stitchTiles: 'stitch' })),
+    ),
+    element.circle({ cx: 5, cy: 5, r: 3, fill: 'url(#fade)', filter: 'url(#soft)', 'clip-path': 'url(#clip)', mask: 'url(#veil)', 'marker-end': 'url(#arrow)' },
+      element.title(null, 'A point'), element.animate({ attributeName: 'r', from: 3, to: 6, dur: '1s', repeatCount: 'indefinite', begin: '0s', calcMode: 'spline', keyTimes: '0;1', keySplines: '0 0 1 1' })),
+    element.path({ d: 'M0 0L9 9' }, element.animateMotion({ dur: '2s', rotate: 'auto' }, element.mpath({ href: '#curve' })), element.set({ attributeName: 'opacity', to: 0, begin: 'click' }), element.animateTransform({ attributeName: 'transform', type: 'rotate', from: '0', to: '360', dur: '3s' })),
+    element.use({ href: '#star', x: 20, y: 20, width: 10, height: 10 }),
+    element.image({ href: '/chart.png', x: 0, y: 0, width: 10, height: 10, preserveAspectRatio: 'xMidYMid slice' }),
+    element.svg({ viewBox: '0 0 1 1', 'aria-hidden': 'true' }),
+    element.a({ href: '/detail' }, element.rect({ width: 2, height: 2 })),
+  );
+  assert.deepEqual(problems(fine), []);
+
+  assert.deepEqual(problems(chart(g(null, element.stop({ offset: 0 })))), ['$.0.0: stop stands inside linearGradient or radialGradient, not inside g. Move it there']);
+  assert.deepEqual(problems(chart(element.circle({ r: 1 }, element.stop({ offset: 0 })))), ['$.0.0: stop stands inside linearGradient or radialGradient, not inside circle. Move it there']);
+  assert.deepEqual(problems(chart(element.feGaussianBlur({ stdDeviation: 1 }))), ['$.0: feGaussianBlur stands inside filter, not inside svg. Move it there']);
+  assert.deepEqual(problems(chart(element.tspan(null, 'x'))), ['$.0: tspan stands inside text, tspan, textPath or a, not inside svg. Move it there']);
+  assert.match(problems(chart(element.circle({ r: 1 }, element.rect({ width: 1 }))))[0], /^\$\.0\.0: circle holds only title, desc, animate, animateTransform, set and animateMotion, not rect\. Put the rect in a g, a defs or the svg$/);
+  assert.match(problems(chart(element.linearGradient({ id: 'x' }, element.circle({ r: 1 }))))[0], /linearGradient holds only title, desc, stop, animate, animateTransform and set, not circle/);
+  assert.match(problems(chart(element.clipPath({ id: 'x' }, g(null))))[0], /clipPath holds only .*, not g\./);
+  assert.match(problems(chart(element.title({}, element.rect({ width: 1 }))))[0], /title holds text only, not rect/);
+  assert.match(problems(chart(element.animateMotion({ dur: '1s' }, element.stop({ offset: 0 }))))[0], /stop stands inside linearGradient or radialGradient, not inside animateMotion/);
+});
+
+test('svg foreignObject: HTML stands inside it and nowhere else in an svg, and an svg inside that HTML is an svg again', () => {
+  const problems = (spec) => validate(spec, {});
+  const element = elements;
+  assert.deepEqual(problems(chart(element.foreignObject({ x: 0, y: 0, width: 50, height: 20 }, div({ id: 'note' }, 'plain HTML, ', element.span(null, 'with a span'))))), []);
+  assert.deepEqual(problems(chart(element.foreignObject({ width: 5, height: 5 }, div(null, svg({ 'aria-hidden': 'true' }, path({ d: 'M0 0' })))))), []);
+  assert.deepEqual(problems(chart(element.foreignObject({ width: 5, height: 5 }, path({ d: 'M0 0' })))), ["$.0.0: path is drawn inside an svg. Put it in svg({ viewBox: '0 0 24 24', 'aria-hidden': 'true' }, ...)"]);
+  assert.deepEqual(problems({ tag: 'foreignObject', props: { width: 1, height: 1 } }), ["$: foreignObject is drawn inside an svg. Put it in svg({ viewBox: '0 0 24 24', 'aria-hidden': 'true' }, ...)"]);
+  assert.deepEqual(problems(chart(each('chart.items', 'id', element.text(null, 'x')), when(state('chart.on'), element.text(null, 'y'), element.stop({ offset: 0 })))).filter((line) => /stop/.test(line)).length, 1, 'a when branch and an each template are read inside the svg too');
+});
+
+test('svg attributes: the standard\'s own names are accepted on SVG tags, a misspelling is refused with the right one, and none stands on an HTML tag', () => {
+  const element = elements;
+  const props = {
+    text: { x: 1, y: 2, dx: 1, dy: 1, rotate: 5, textLength: 10, lengthAdjust: 'spacing', 'text-anchor': 'end', 'dominant-baseline': 'middle', 'font-family': 'serif', 'font-size': 4, 'font-weight': 700, 'letter-spacing': 1, 'text-decoration': 'underline', 'writing-mode': 'vertical-rl', fill: 'red', stroke: 'none', opacity: 1, 'paint-order': 'stroke', transform: 'rotate(5)', class: 'axis', 'aria-hidden': 'true', 'data-axis': 'x' },
+    rect: { rx: 1, ry: 1, 'fill-opacity': 0.5, 'stroke-dasharray': '2 1', 'stroke-linecap': 'round', 'pointer-events': 'none', cursor: 'pointer', display: 'none', visibility: 'hidden', overflow: 'visible', 'mix-blend-mode': 'multiply', 'shape-rendering': 'crispEdges', 'vector-effect': 'non-scaling-stroke', tabindex: -1, focusable: 'false' },
+    feColorMatrix: { in: 'SourceGraphic', result: 'matrix', type: 'matrix', values: '1 0 0 0 0', 'color-interpolation-filters': 'sRGB' },
+    feComposite: { in2: 'blur', operator: 'arithmetic', k1: 0, k2: 1, k3: 1, k4: 0 },
+    feDisplacementMap: { scale: 5, xChannelSelector: 'R', yChannelSelector: 'G' },
+    feConvolveMatrix: { order: 3, kernelMatrix: '0 0 0 0 1 0 0 0 0', divisor: 1, bias: 0, targetX: 1, targetY: 1, edgeMode: 'duplicate', preserveAlpha: 'true' },
+    feMorphology: { operator: 'dilate', radius: 2 },
+    feSpotLight: { x: 1, y: 1, z: 1, pointsAtX: 0, pointsAtY: 0, pointsAtZ: 0, specularExponent: 1, limitingConeAngle: 30 },
+    feFlood: { 'flood-color': 'red', 'flood-opacity': 0.5 },
+    stop: { offset: '50%', 'stop-color': 'blue', 'stop-opacity': 0.5 },
+    animate: { attributeName: 'cx', values: '0;5;0', by: 1, dur: '1s', end: '5s', repeatDur: '10s', restart: 'never', additive: 'sum', accumulate: 'sum' },
+  };
+  for (const [tag, values] of Object.entries(props)) assert.doesNotThrow(() => element[tag](values), tag);
+  assert.throws(() => element.rect({ strokewidth: 1 }), /rect\(\.\.\.\): unknown attribute "strokewidth"\. Did you mean "stroke-width"\?/);
+  assert.throws(() => element.linearGradient({ gradientunits: 'x' }), /unknown attribute "gradientunits"\. Did you mean "gradientUnits"\?/);
+  assert.throws(() => div({ stdDeviation: 1 }), /stdDeviation is an attribute of an svg drawing, and this is a div/);
+  assert.throws(() => element.span({ 'text-anchor': 'end' }, 'x'), /text-anchor is an attribute of an svg drawing, and this is a span/);
+  assert.doesNotThrow(() => element.a({ href: '/x', transform: 'rotate(1)' }), 'the SVG link takes the SVG attributes');
+});
+
+test('svg: elements are made in the SVG namespace, the shared a only inside an svg, and the children of a foreignObject in HTML', async () => {
+  const { app } = await import('../src/ui.js');
+  const { createRoot } = await import('./support/dom-shim.mjs');
+  const element = elements;
+  const spec = div(
+    { id: 'page' },
+    element.a({ id: 'html-link', href: '/a' }, 'html link'),
+    chart(
+      element.text({ id: 'label', x: 1, y: 2 }, 'Sales', element.tspan(null, ' 2026')),
+      element.a({ id: 'svg-link', href: '/b' }, element.rect({ width: 1, height: 1 })),
+      element.foreignObject({ id: 'note', width: 10, height: 10 }, div({ id: 'inside' }, element.a({ id: 'inner-link', href: '/c' }, 'link'))),
+      when(state('chart.on'), element.circle({ id: 'dot', r: 1 })),
+      each('chart.items', 'id', element.a({ href: '/d', id: 'row-link' }, element.circle({ r: 1 }))),
+    ),
+  );
+  const namespaces = { chart: { state: { on: true, items: [{ id: 'x' }] } } };
+  const created = [];
+  const root = createRoot();
+  const document = globalThis.document;
+  const { createElementNS, createElement } = document;
+  document.createElementNS = (namespace, tag) => (created.push(['svg', tag]), createElementNS(namespace, tag));
+  document.createElement = (tag) => (created.push(['html', tag]), createElement(tag));
+  try {
+    const ui = app({ namespaces, spec, root, dev: true });
+    ui.destroy();
+  } finally {
+    document.createElementNS = createElementNS;
+    document.createElement = createElement;
+  }
+  assert.deepEqual(created.map(([kind, tag]) => `${kind}:${tag}`), [
+    'html:div', 'html:a', 'svg:svg', 'svg:text', 'svg:tspan', 'svg:a', 'svg:rect', 'svg:foreignObject', 'html:div', 'html:a', 'svg:circle', 'svg:a', 'svg:circle',
+  ]);
+});
+
+test('svg on the server: the markup keeps the case of the standard and every element holds what the spec says, closed', async () => {
+  const { app } = await import('../src/ui.js');
+  const { createServerDocument, serialize } = await import('../src/server-dom.js');
+  const element = elements;
+  const spec = chart(
+    element.defs(null, element.linearGradient({ domId: 'fade', gradientUnits: 'userSpaceOnUse' }, element.stop({ offset: 0, 'stop-color': 'red' }))),
+    element.text({ x: 1, y: 2, 'text-anchor': 'middle' }, 'Total ', state('chart.total'), element.tspan({ dy: 1 }, ' & more')),
+    element.foreignObject({ width: 5, height: 5 }, div({ id: 'inside' }, 'html')),
+  );
+  const root = createServerDocument().createElement('div');
+  const ui = app({ namespaces: { chart: { state: { total: 12 } } }, spec, root, dev: false });
+  const markup = serialize(root);
+  ui.destroy();
+  assert.match(markup, /<svg data-id="0" viewBox="0 0 100 50" role="img" aria-label="Chart"><defs data-id="0\.0"><linearGradient data-id="0\.0\.0" id="fade" gradientUnits="userSpaceOnUse"><stop data-id="0\.0\.0\.0" offset="0" stop-color="red"><\/stop><\/linearGradient><\/defs>/);
+  assert.match(markup, /<text data-id="0\.1" x="1" y="2" text-anchor="middle">Total <!--\|-->12<tspan data-id="0\.1\.2" dy="1"> &amp; more<\/tspan><\/text>/);
+  assert.match(markup, /<foreignObject data-id="0\.2" width="5" height="5"><div data-id="inside">html<\/div><\/foreignObject><\/svg>$/);
+});
+

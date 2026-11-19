@@ -12,9 +12,21 @@ export const APP_ELEMENT_ID = 'app';
 // The data of the comment a server writes between two neighbouring texts (src/server-dom.js), so each text of a spec has a node of its own in the markup.
 export const TEXT_SEPARATOR = '|';
 export const URL_PROPS = ['href', 'src', 'action', 'formaction'];
-// SVG for icons and simple drawings: a closed set of tags the runtime makes in the SVG namespace (src/ui.js). The grammar's rules for
-// them (where they may stand, which attributes they take) are in src/grammar.js and src/validate.js.
-export const SVG_TAGS = ['svg', 'g', 'path', 'circle', 'ellipse', 'rect', 'line', 'polyline', 'polygon', 'use'];
+// SVG: the elements of the SVG standard that draw, group, paint, filter or animate, written in the case the standard uses (the tag of an
+// element is its name). The runtime makes them in the SVG namespace (src/ui.js). The grammar's rules for them (where they may stand,
+// what they hold, which attributes they take) are in src/grammar.js and src/validate.js. `a` is both an HTML and an SVG element: it is
+// an SVG one inside an svg (`SVG_SHARED_TAGS`). Not in the grammar, on purpose: `script`, `style`, `switch` and the elements the
+// standard has deprecated.
+export const SVG_TAGS = (
+  'svg g defs symbol use foreignObject ' +
+  'path circle ellipse rect line polyline polygon image ' +
+  'text tspan textPath title desc ' +
+  'linearGradient radialGradient stop pattern clipPath mask marker ' +
+  'filter feBlend feColorMatrix feComponentTransfer feComposite feConvolveMatrix feDiffuseLighting feDisplacementMap feDistantLight feDropShadow feFlood ' +
+  'feFuncA feFuncB feFuncG feFuncR feGaussianBlur feImage feMerge feMergeNode feMorphology feOffset fePointLight feSpecularLighting feSpotLight feTile feTurbulence ' +
+  'animate animateMotion animateTransform set mpath'
+).split(' ');
+export const SVG_SHARED_TAGS = ['a'];
 export const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 // The keys of an element that the builders keep outside `props` (everything else they are given becomes a prop).
 export const ELEMENT_FIELDS = ['id', 'classes', 'on', 'transition'];

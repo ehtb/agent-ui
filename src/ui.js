@@ -36,7 +36,7 @@
 // Reactivity: signals, effects, batched flush
 // ---------------------------------------------------------------------------
 
-import { APP_ELEMENT_ID, DELEGATED_EVENTS, KEY_EVENTS, PAGE_PLUGIN, SVG_NAMESPACE, SVG_TAGS, URL_PROPS, isBinding, isPlainObject, toArray, matchesArgumentType, isUnsafeUrl, isSameValue, nextFrame, readEventPath, eventKeyName, splitRowPath } from './spec-core.js';
+import { APP_ELEMENT_ID, DELEGATED_EVENTS, KEY_EVENTS, PAGE_PLUGIN, SVG_NAMESPACE, SVG_SHARED_TAGS, SVG_TAGS, URL_PROPS, isBinding, isPlainObject, toArray, matchesArgumentType, isUnsafeUrl, isSameValue, nextFrame, readEventPath, eventKeyName, splitRowPath } from './spec-core.js';
 import { validate, grammar, findJsonProblems, findShapeProblems } from './validate.js';
 import { didYouMean, fail, failOwnedTwice } from './messages.js';
 import { checkAdopt, checkBasePath, checkPluginProperties, checkPropertyHandler, noteRowsJumped, checkRowChanges, checkRowKey, checkRowState, checkRowStateWrite, checkEachKeys, consumeCheckedListProblem, forgetCheckedListProblems } from './runtime-checks.js';
@@ -710,7 +710,9 @@ const createApp = (options, disposers) => {
   // Like the bindings, nodes are compiled in two steps: compileNode(node, path) does the spec-walking once and returns
   // stamp(row), which creates one DOM instance and its effects. An `each` compiles its template once and stamps
   // it per row, so adding the 1,000th row never re-walks the template JSON.
-  const compileNode = (node, path) => {
+  // `inSvg` is true where the parent is an SVG element whose children are SVG too: the element `a` is the SVG one there, and the children
+  // of a foreignObject are HTML again.
+  const compileNode = (node, path, inSvg = false) => {
     if (typeof node === 'string') return () => (adopter ? adopter.text(node, false) : document.createTextNode(node));
     if (isBinding(node)) {
       const bindRow = planBinding(node);
@@ -726,9 +728,9 @@ const createApp = (options, disposers) => {
         return textNode;
       };
     }
-    if (node.each !== undefined) return compileEach(node, path);
-    if (node.when !== undefined) return compileWhen(node, path);
-    return compileElement(node, path);
+    if (node.each !== undefined) return compileEach(node, path, inSvg);
+    if (node.when !== undefined) return compileWhen(node, path, inSvg);
+    return compileElement(node, path, inSvg);
   };
 
   // Observers hear of the elements a render added once the render is done and only for the ones that are in the page: one microtask
@@ -742,7 +744,7 @@ const createApp = (options, disposers) => {
     });
   };
 
-  const compileElement = (node, path) => {
+  const compileElement = (node, path, inSvg) => {
     const dataId = node.id || path;
     const props = node.props || {};
     const planProp = (name) => (isBinding(props[name]) ? { name, bindRow: planBinding(props[name]) } : { name, literal: props[name] });
@@ -761,8 +763,9 @@ const createApp = (options, disposers) => {
     const classNames = node.classes ? Object.keys(node.classes) : null;
     const classPlans = classNames && classNames.map((className) => planBinding(node.classes[className]));
     const planBaseClass = classPlans && 'class' in props ? planProp('class') : null;
-    const childStamps = toArray(node.children).map((child, index) => compileNode(child, `${path}.${index}`));
-    const isSvg = SVG_TAGS.includes(node.tag); // drawn in the SVG namespace, or the browser makes an HTML element it does not draw
+    // Drawn in the SVG namespace, or the browser makes an HTML element it does not draw. `a` is both: it is the SVG one inside an svg.
+    const isSvg = SVG_TAGS.includes(node.tag) || (inSvg && SVG_SHARED_TAGS.includes(node.tag));
+    const childStamps = toArray(node.children).map((child, index) => compileNode(child, `${path}.${index}`, isSvg && node.tag !== 'foreignObject'));
 
     // What the server wrote inside these elements is not the spec's to take: the slot of a shell holds the page's markup (the page's own
     // app takes it next), and a textarea's content is its value. The HTML id `app` is the mount point of a page (src/hydrate.js) and so reserved:
@@ -811,11 +814,11 @@ const createApp = (options, disposers) => {
 
   // Shows `children` while the binding is truthy and `otherwise` while it is falsy. Only the active branch exists;
   // it is rebuilt when truthiness flips, not on every change.
-  const compileWhen = (node, path) => {
+  const compileWhen = (node, path, inSvg) => {
     const bindCondition = planBinding(node.when);
     const branchStamps = {
-      children: toArray(node.children).map((child, index) => compileNode(child, `${path}.when.${index}`)),
-      otherwise: toArray(node.otherwise).map((child, index) => compileNode(child, `${path}.otherwise.${index}`)),
+      children: toArray(node.children).map((child, index) => compileNode(child, `${path}.when.${index}`, inSvg)),
+      otherwise: toArray(node.otherwise).map((child, index) => compileNode(child, `${path}.otherwise.${index}`, inSvg)),
     };
 
     return (row) => {
@@ -861,9 +864,9 @@ const createApp = (options, disposers) => {
   };
 
   // One row per item, matched by key. Rows are reused, reordered in place, and disposed when removed.
-  const compileEach = (node, path) => {
+  const compileEach = (node, path, inSvg) => {
     const bindItems = typeof node.each === 'string' ? planBinding({ state: node.each }) : planBinding(node.each);
-    const stampRow = compileNode(node.template, `${path}.each`);
+    const stampRow = compileNode(node.template, `${path}.each`, inSvg);
     // key "." means the item itself is the key (a list of strings or numbers); {item: "."} reads it.
     const keyOf = node.key === '.' ? (item) => item : (item) => item?.[node.key];
     // The state or derived key the list reads, for the message of a duplicate (undefined for a list of an outer row).

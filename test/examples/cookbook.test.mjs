@@ -372,6 +372,29 @@ test('svg-icons: the stars follow the rating, the line follows the data, and eve
   assert.deepEqual(ui.errors, []);
 });
 
+test('svg-chart: the bars follow the data, the picked bar gets its value above it, and the drawing says what it shows', async () => {
+  const { ui, byId, root } = await mountRecipe('svg-chart');
+  const bars = () => findElements(root, (element) => element.localName === 'rect');
+  assert.deepEqual(bars().map((element) => [Number(element.getAttribute('height')).toFixed(1), Number(element.getAttribute('y')).toFixed(1)]), [['40.0', '40.0'], ['63.3', '16.7'], ['26.7', '53.3'], ['80.0', '0.0']]);
+  assert.equal(byId('chart')[0].getAttribute('aria-label'), 'Sales by month, 4 months, the most in Apr with 24');
+  assert.deepEqual(findElements(root, (element) => element.localName === 'title').map((element) => element.textContent), ['Jan: 12', 'Feb: 19', 'Mar: 8', 'Apr: 24']);
+  const labels = () => findElements(root, (element) => element.localName === 'text').map((element) => element.textContent);
+  assert.deepEqual(labels(), ['Jan', 'Feb', 'Mar', 'Apr']);
+  assert.equal(findElements(root, (element) => element.localName === 'linearGradient')[0].getAttribute('id'), 'bar-fill');
+  assert.equal(bars()[0].getAttribute('fill'), 'url(#bar-fill)');
+  fireEvent(byId('month')[1], 'click');
+  await ui.settle();
+  assert.deepEqual(labels(), ['Jan', 'Feb', 'Feb: 19', 'Mar', 'Apr']);
+  assert.deepEqual(byId('month').map((element) => element.getAttribute('aria-pressed')), ['false', 'true', 'false', 'false']);
+  fireEvent(byId('month')[1], 'click');
+  await ui.settle();
+  assert.deepEqual(labels(), ['Jan', 'Feb', 'Mar', 'Apr'], 'a second click puts the bar down');
+  for (const drawing of findElements(root, (element) => element.localName === 'svg')) {
+    assert.ok(drawing.getAttribute('aria-hidden') === 'true' || (drawing.getAttribute('role') === 'img' && drawing.getAttribute('aria-label')), 'an svg is decoration or says what it shows');
+  }
+  assert.deepEqual(ui.errors, []);
+});
+
 test('format-values: money and dates come out as the reader writes them, and a change formats one row', async () => {
   const { ui, texts } = await mountRecipe('format-values');
   assert.deepEqual(texts('invoice'), ['Ada: €1,234.56, due 12 Mar 2026', 'Bo: €99.00, due 1 Apr 2026']);

@@ -244,8 +244,13 @@ export class DomElement extends DomNode {
 export const createServerDocument = (ElementClass = DomElement) => {
   const document = {
     createElement: (tagName) => new ElementClass(tagName, document),
-    // Markup has no namespaces to write: an HTML parser puts <svg> and what it holds in the SVG namespace by itself.
-    createElementNS: (namespace, tagName) => new ElementClass(tagName, document),
+    // Markup has no namespaces to write: an HTML parser puts <svg> and what it holds in the SVG namespace by itself. An SVG element keeps the
+    // case of its name (linearGradient, foreignObject): an HTML element's is lower case, and a parser gives the SVG names theirs back.
+    createElementNS: (namespace, tagName) => {
+      const element = new ElementClass(tagName, document);
+      element.localName = tagName;
+      return element;
+    },
     createTextNode: (data) => new DomText(data),
     createComment: (data) => new DomComment(data),
     createDocumentFragment: () => new DomFragment(),

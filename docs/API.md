@@ -212,7 +212,7 @@ As a child, a binding renders text. `null` and `undefined` become empty; numbers
 
 | Field | Meaning |
 |---|---|
-| `tag` | One of the allowed tags, listed in `grammar.tags`: div span p h1 h2 h3 ul ol li button input label a section header footer main nav form select option textarea strong em b i small code pre blockquote hr br img table thead tbody tfoot tr th td caption dl dt dd details summary dialog aside article fieldset legend figure figcaption progress time, and the SVG tags svg g path circle ellipse rect line polyline polygon use (see "SVG"). Void tags (`input`, `img`, `hr`, `br`, and the SVG shapes) cannot have children. |
+| `tag` | One of the allowed tags, listed in `grammar.tags`: div span p h1 h2 h3 ul ol li button input label a section header footer main nav form select option textarea strong em b i small code pre blockquote hr br img table thead tbody tfoot tr th td caption dl dt dd details summary dialog aside article fieldset legend figure figcaption progress time, and the SVG tags (`grammar.svgTags`: see "SVG"). Void tags (`input`, `img`, `hr`, `br`) cannot have children. |
 | `id` | Stable address, rendered as `data-id`. Must be a unique non-empty string within the spec. Defaults to the spec path (see "Default ids"). Give an explicit id to anything tests or other agents must find across edits. |
 | `props` | `{name: literal \| binding}`. See "Props" below. |
 | `classes` | `{className: binding}`. Values must be bindings, never `true` or `false` literals; constant classes go in `props.class`. The final `class` attribute is the static `props.class` plus every class whose binding is truthy, written as one attribute and removed when empty. |
@@ -236,7 +236,24 @@ The validator reports names from other conventions at mount: `className`, `htmlF
 
 **Drag and drop.** The grammar has no `dragstart`, `dragover`, `drop` or `dataTransfer`, and none will be added: a drag is the bubbling pointer events (`pointerdown` on a grip, `pointerover` on the rows it crosses, `pointerup` and `pointercancel`) calling actions, with `follow` for the picked-up row and `transition` for the others (the page lists their plugins, `withFollow` and `withMoves`). A touch pointer is captured by the grip and never reports the rows it crosses, so the keyboard (Enter, the arrow keys, Escape) is both the touch path and the accessible one, and belongs in every sortable list. Copy the recipe `drag-reorder` (`agent-ui explain drag-reorder`, tested in `test/examples/cookbook.test.mjs`); `examples/react-converted-components` builds a reusable `sortable` on the same pattern.
 
-**SVG.** A closed subset for icons and simple drawings: `svg`, `g`, `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, `polygon`, `use` (`grammar.svgTags`). The runtime makes them in the SVG namespace; on the server they are markup, which an HTML parser puts in that namespace by itself. Their attributes are `grammar.svgAttributes` (`viewBox`, `fill`, `stroke`, `stroke-width`, `d`, `cx`, `points`, `transform`, ...) besides `href`, `width`, `height`, `class`, `style` and the global ones; an SVG attribute on an HTML tag is refused. The rules, all checked by the validator: a shape (every SVG tag but `svg`) stands only inside an `svg`; an `svg` holds only SVG tags, no text and no HTML; an `svg` either says what it shows (`role: 'img'` with an `aria-label`) or is `'aria-hidden': 'true'` beside text that says it. An icon used many times comes from a sprite in `public/` (`use({ href: '/icons.svg#star' })`, the base path added like any URL). What is drawn from data (the points of a line) is a derived value. A large or interactive chart is a library drawn by a plugin (`mountElement`). Copy recipe `svg-icons`.
+**SVG.** The SVG elements that draw, group, paint, filter and animate (`grammar.svgTags`), and the shared `a`:
+- **Structure:** `svg`, `g`, `defs`, `symbol`, `use`, `foreignObject`.
+- **Shapes and images:** `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, `polygon`, `image`.
+- **Text:** `text`, `tspan`, `textPath`, `title`, `desc`.
+- **Paint and clipping:** `linearGradient`, `radialGradient`, `stop`, `pattern`, `clipPath`, `mask`, `marker`.
+- **Filters:** `filter` and the 25 `fe*` elements (`feGaussianBlur`, `feColorMatrix`, `feComposite`, `feTurbulence`, ...).
+- **Animation:** `animate`, `animateTransform`, `animateMotion`, `set`, `mpath`.
+
+Not in the grammar: `script`, `style` and `switch`, and the elements the SVG standard has deprecated. Each has a builder of the same name (`text(...)`, `linearGradient(...)`, `feGaussianBlur(...)`). The runtime makes them in the SVG namespace; on the server they are markup, which an HTML parser puts in that namespace by itself and gives each name its case back (`linearGradient`, `foreignObject`). `a` is the HTML link outside an svg and the SVG link inside one. The attributes are `grammar.svgAttributes`, in the case the standard writes them (`viewBox`, `gradientUnits`, `stdDeviation`, `text-anchor`, ...), besides `href`, `type`, `width`, `height`, `class`, `style` and the global ones, plus `data-*` and `aria-*`. An SVG attribute on an HTML tag is refused, and there is no `xmlns` or `xlink:href` (the namespace is put there for you, and `href` is the one attribute). An `id` is the element's address in the spec, as everywhere; the HTML `id` that `url(#gradient)`, `href: '#shape'` and `clip-path` refer to is `domId`.
+
+Where each element may stand is checked by the validator, because a browser draws nothing for an element that stands in the wrong place:
+1. An SVG tag stands only inside an `svg`; an `svg` holds SVG tags, and HTML only inside a `foreignObject` (an `svg` inside that HTML is an svg again).
+2. Text (a string or a binding) stands only in `text`, `tspan`, `textPath`, `title` and `desc`.
+3. A `stop` stands in a gradient, a `tspan` in text, a filter primitive in a `filter`, a transfer function (`feFuncR`, ...) in `feComponentTransfer`, a light source in a lighting primitive, an `mpath` in `animateMotion` (`grammar.svgParents`).
+4. The shapes, the gradients, the filter primitives, the text elements and the animation elements hold only what the standard lets them hold, such as a `title` or an animation in a shape (`grammar.svgHolds`). `svg`, `g`, `defs`, `symbol`, `marker`, `pattern`, `mask` and `a` hold any SVG element that may stand there.
+5. An `svg` either says what it shows (`role: 'img'` with an `aria-label`) or is `'aria-hidden': 'true'` beside text that says it.
+
+A `title` inside a shape is the browser's tooltip for it, and the way to give a shape an accessible name. An icon used many times comes from a sprite in `public/` (`use({ href: '/icons.svg#star' })`, the base path added like any URL). What is drawn from data (the points of a line, the height of a bar, a label's position) is a derived value, and a label is a `text` bound to state, so a chart is spec and needs no plugin. A chart with zoom, tooltips that follow the pointer or thousands of marks is a library drawn by a plugin (`mountElement`). Copy recipes `svg-icons` and `svg-chart`.
 
 ### Events and handlers
 
@@ -711,9 +728,10 @@ The validator lives in `src/validate.js` and is imported by `src/ui.js`. Product
 | `button\|a needs text or aria-label` | Give it children or a label. |
 | `img needs alt (use "" for decorative images)` | Add `alt`. |
 | `svg needs aria-label with role: 'img' ... or 'aria-hidden': 'true' ...`, `svg has aria-label but not role: 'img'` | Say what the drawing shows (`role: 'img'` and `aria-label` together), or hide a decorative icon next to text that says it. |
-| `path is drawn inside an svg`, `an svg holds only g, path, ...`, `an svg holds no text` | SVG shapes stand inside an `svg`, and an `svg` holds only SVG tags. |
+| `path is drawn inside an svg`, `an svg holds SVG tags ... not span` | SVG tags stand inside an `svg`; HTML stands next to the svg, or inside a `foreignObject`. |
+| `text inside <g>, which holds no text`, `text holds only tspan, ... not rect`, `stop stands inside linearGradient or radialGradient`, `circle holds only title, desc, ...` | The content model of the SVG elements: text only in `text`, `tspan`, `textPath`, `title` and `desc`; a `stop` in a gradient, a filter primitive in a `filter`; a shape holds only a `title`, a `desc` or an animation (section 3, "SVG"). |
 | `props.fill: fill is an attribute of an svg drawing, and this is a div` | Put the attribute on the `svg` or a shape, or style the element with CSS. |
-| `img\|input\|hr\|br\|path\|... cannot have children` | Void elements, the SVG shapes among them. |
+| `img\|input\|hr\|br cannot have children` | Void elements. |
 
 ### Components
 
@@ -1366,7 +1384,7 @@ Known limits:
 - There is no virtualization. Very long lists render every row.
 - `{item}` in a nested `each` reads only the innermost row. An outer row is read with `as` and `{row}`.
 - A select's `value` is not re-applied when its options change after mount.
-- SVG is a closed subset for icons and simple drawings (section 3, "SVG"); no `text`, gradients, filters, canvas or media tags. Events are limited to the list in section 3.
+- SVG is the set section 3 lists ("SVG"): no `script`, `style` or `switch`, no `xmlns`, no canvas or media tags. Events are limited to the list in section 3.
 - `tree()` and `outline()` read the DOM, so they reflect what is rendered.
 - Because the first render takes over the server's markup, a node the server wrote is kept as it is, with its focus, typed-but-unsubmitted input, scroll position and running animation; a node that differs from the render is made again and loses them. A soft navigation replaces the page instead, and carries the focus and typed input over by `data-id`.
 

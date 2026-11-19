@@ -267,3 +267,16 @@ madeBy({ tag: 'div' })?.toUpperCase();
 withChecks.checks = [{ node: () => undefined }];
 // @ts-expect-error forbidTags takes tag to fix, not a list
 forbidTags(['button']);
+
+// SVG builders, and what the grammar says about where each SVG element stands.
+import { text as svgText, linearGradient, stop as svgStop, foreignObject, feGaussianBlur } from '../../src/spec.js';
+import { grammar as grammarTables } from '../../src/ui.js';
+svgText({ x: 1, y: 2, 'text-anchor': 'middle' }, 'label');
+linearGradient({ domId: 'fade' }, svgStop({ offset: '0%' }));
+foreignObject({ width: 1, height: 1 });
+feGaussianBlur({ stdDeviation: 2 });
+grammarTables.svgHolds.text?.includes('tspan');
+grammarTables.svgParents.stop?.join(',');
+grammarTables.svgTextTags.includes('title');
+// @ts-expect-error there is no builder for an element the grammar leaves out
+import { style as svgStyle } from '../../src/spec.js';

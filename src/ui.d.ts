@@ -236,6 +236,14 @@ export const grammar: Readonly<{
   svgTags: string[];
   /** The attributes that belong on an SVG tag only (also in `attributes`). */
   svgAttributes: string[]; // data-* and aria-* names are accepted when something follows the prefix and the name has no space, quote, <, >, / or =
+  /** For the SVG tags that hold only some tags: which ones (a tag that is not a key holds any SVG tag that may stand there). */
+  svgHolds: Record<string, string[]>;
+  /** For the SVG tags that stand only in some tags (a stop in a gradient, a filter primitive in a filter): which ones. */
+  svgParents: Record<string, string[]>;
+  /** The SVG tags that hold text, and nothing else inside an svg does. */
+  svgTextTags: string[];
+  /** The tags that are HTML and SVG both (`a`): the SVG element inside an svg. */
+  svgSharedTags: string[];
 }>;
 
 export function isPlainObject(value: unknown): value is Record<string, unknown>;
