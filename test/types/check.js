@@ -253,3 +253,17 @@ definePage({ head: { title: 'Perf' }, plugins: [withPerformance, withPerformance
 // @ts-expect-error unknown performance option
 performance({ elemnts: 1000 });
 
+
+// Project checks: `checks` in the build configuration, and `madeBy` of expanded specs.
+import { forbidTags } from '../../build/project-checks.mjs';
+import { madeBy } from '../../src/components.js';
+/** @type {import('../../build/config.mjs').BuildConfig} */
+const withChecks = {
+  checks: [forbidTags({ button: 'Use Button from ui/button.js' }, 'no-raw-button'), { name: 'icon-label', node: ({ node, madeBy: author, path }) => (node.tag === 'button' && author === null ? { problem: `no label at ${path}`, fix: 'Add aria-label' } : undefined) }],
+};
+withChecks.checks?.[0]?.name.toUpperCase();
+madeBy({ tag: 'div' })?.toUpperCase();
+// @ts-expect-error a check needs a name
+withChecks.checks = [{ node: () => undefined }];
+// @ts-expect-error forbidTags takes tag to fix, not a list
+forbidTags(['button']);

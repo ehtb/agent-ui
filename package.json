@@ -119,6 +119,10 @@
       "types": "./build/index.d.mts",
       "default": "./build/index.mjs"
     },
+    "./checks": {
+      "types": "./build/project-checks.d.mts",
+      "default": "./build/project-checks.mjs"
+    },
     "./build/index.mjs": {
       "types": "./build/index.d.mts",
       "default": "./build/index.mjs"

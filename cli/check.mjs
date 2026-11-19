@@ -38,6 +38,7 @@ import { auditSpecPerformance } from '../src/performance.js';
 import { validate } from '../src/validate.js';
 import { mentionsAgentUi } from './agent-instructions.mjs';
 import { findPathOwnerProblems, urlsOfPage } from '../build/page-paths.mjs';
+import { runPageChecks } from '../build/project-checks.mjs';
 import { parseOrExit } from './arguments.mjs';
 import { isMain } from './is-main.mjs';
 
@@ -225,6 +226,7 @@ export const checkProject = async ({ config, root = process.cwd(), performance =
       found.push(`${where}: cannot start the page: ${error?.message ?? String(error)}`);
     }
   };
+  const ruleCheckedShells = new Set(); // the same, for the project's checks
   const shellTexts = new Map(); // shell name -> { text, page } of the first page that gives its content
   const pageAt = (target) => compiledPages.find((entry) => entry.pattern.match(withoutTrailingSlash(target)))?.page;
   const reportedLinks = new Set(); // the same broken link can be met twice (the page's spec and its shell's content), and is reported once
@@ -264,6 +266,8 @@ export const checkProject = async ({ config, root = process.cwd(), performance =
       if (earlier && earlier.text !== text) record.problems.push(`${page.file}: the content of the shell "${module.shellName}" differs from the one ${earlier.page.file} gives it. Every page of a shell imports the same content from one module; a different header needs a different shell name`);
       if (!earlier) shellTexts.set(module.shellName, { text, page });
     }
+    // The project's own rules (`checks` in build.config.mjs) read the finished spec, and a shell's content once.
+    record.problems.push(...runPageChecks(config.checks, { module, file: page.file, checkedShells: ruleCheckedShells }));
     if (performance) {
       record.problems.push(
         ...auditSpecPerformance(module.spec, {

@@ -148,7 +148,7 @@ A plugin you write:
 
 ## 7. Verify
 
-`agent-ui check` validates every page's finished spec, every literal link and the data the page loads, without a browser. It reports a duplicate or missing list key anywhere in the spec. Run it before you finish.
+`agent-ui check` validates every page's finished spec, every literal link and the data the page loads, without a browser. It reports a duplicate or missing list key anywhere in the spec, and the rules the project added itself (`checks` in `build.config.mjs`, `docs/BUILD.md`, "Project checks"): fix those lines as you fix the others. Run it before you finish.
 
 In a test, use the agent API:
 

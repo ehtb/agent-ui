@@ -48,6 +48,7 @@
 
 import { didYouMean } from './messages.js';
 import { isBinding, isPlainObject, toArray } from './spec-core.js';
+import { SPEC_SLOTS } from './spec-walk.js';
 
 const MAX_DEPTH = 20;
 const PARAM_KEYS = ['default', 'options', 'optional', 'type'];
@@ -64,6 +65,23 @@ const typeMismatch = (type, value) => {
   return `must be a ${type}${type === 'string' ? ' or a binding' : ''}, got ${JSON.stringify(value)}. Write ${type === 'string' ? "'text'" : type === 'number' ? '3' : 'true'}`;
 };
 const clone = (value) => JSON.parse(JSON.stringify(value));
+
+// Which component wrote a node. `expandComponents` makes new nodes from a component's definition and from what a use passes in,
+// and a project check needs to tell a `button` that a page wrote itself from the one inside the `Button` component. The table is
+// keyed by the node object (so it is not in the JSON, a test that compares specs does not see it, and a node changed afterwards
+// is simply not in it), and it is kept on `globalThis` so that two copies of the package, the command line's and the project's,
+// read the same one.
+const MADE_BY = Symbol.for('@ehtb/agent-ui:made-by');
+// Made on first use, not when the module is imported: no module of the package does anything on import (it lets a bundler drop it).
+const writtenBy = () => {
+  if (!globalThis[MADE_BY]) globalThis[MADE_BY] = new WeakMap();
+  return globalThis[MADE_BY];
+};
+
+// The name of the component whose definition wrote this node (the node is part of its spec, whatever params it got), or null when
+// the node was written directly: in a view, in a layout, or passed to a component as `children` or as a param (whoever wrote it
+// there is the author, and a component that passes it on does not become its author).
+export const madeBy = (node) => (globalThis[MADE_BY] ? globalThis[MADE_BY].get(node) ?? null : null);
 const isSlotNode = (node) => isPlainObject(node) && 'slot' in node && Object.keys(node).length === 1;
 
 // Reads one component's `params` (a list of names, or an object of declarations) into a Map of normalized declarations.
@@ -191,6 +209,34 @@ export const expandComponents = (spec, componentList = {}) => {
     declared[name] = { spec: definition.spec, params: readParams(name, definition.params, problems) };
   }
 
+  // The nodes a use hands to its component, through `children` or through a param, as the objects they are before expansion
+  // (the clones of a param included), and who wrote them: the component whose template holds the use, or null for a page. An
+  // object that is in the table already was passed on by a component and keeps the author it had.
+  const passedIn = new WeakMap();
+  // Set while one use is being substituted: the author of the use node itself. substitute never calls expand, so it is not
+  // overwritten while the substitution reads it; keep it that way.
+  let authorOfUse = null;
+  // Only the nodes are marked: an object is a node where a node can stand (the slots of a node), not in its props or handlers.
+  const markPassedIn = (value) => {
+    if (Array.isArray(value)) return value.forEach(markPassedIn);
+    if (!isPlainObject(value)) return;
+    if (!passedIn.has(value)) passedIn.set(value, authorOfUse);
+    for (const slotName of SPEC_SLOTS) if (slotName in value) markPassedIn(value[slotName]);
+  };
+  // A param's value is cloned for every place it is used. The clone takes the author of the object it was made from, found at the
+  // same path (a clone has the same keys and positions as its source, minus what JSON drops).
+  const cloneParam = (source) => {
+    const copy = clone(source);
+    const mark = (made, original) => {
+      if (Array.isArray(made)) return made.forEach((item, index) => mark(item, original?.[index]));
+      if (!isPlainObject(made)) return;
+      passedIn.set(made, original && passedIn.has(original) ? passedIn.get(original) : authorOfUse);
+      for (const slotName of SPEC_SLOTS) if (slotName in made) mark(made[slotName], original?.[slotName]);
+    };
+    mark(copy, source);
+    return copy;
+  };
+
   const substitute = (template, values, slotNodes, path) => {
     if (Array.isArray(template)) return template.flatMap((child, index) => {
       const result = substitute(child, values, slotNodes, `${path}.${index}`);
@@ -218,7 +264,7 @@ export const expandComponents = (spec, componentList = {}) => {
         problems.push(`${path}: unknown param ${template.param}. ${didYouMean(String(template.param), Object.keys(values))}Declare it in the component's params or fix the name. Declared: ${Object.keys(values).join(', ') || 'none'}`);
         return null;
       }
-      return values[template.param] === OMIT ? OMIT : clone(values[template.param]);
+      return values[template.param] === OMIT ? OMIT : cloneParam(values[template.param]);
     }
     if (keys.length === 1 && keys[0] === 'slot') {
       if (template.slot !== 'children') problems.push(`${path}: only the slot "children" exists. Write { slot: 'children' }`);
@@ -280,12 +326,16 @@ export const expandComponents = (spec, componentList = {}) => {
     return problems.length > before ? null : values; // report the use-site mistakes only, not their echoes
   };
 
-  const expand = (node, path, depth) => {
+  // `owner` is the component whose template the node comes from (null: the spec the page passed in); a node that a use passed in has
+  // the author `passedIn` recorded.
+  // `isNode` is true where a node stands (the root and the slots of a node): only nodes get an author recorded, not the props or the bindings.
+  const expand = (node, path, depth, owner, isNode) => {
     if (Array.isArray(node)) return node.flatMap((child, index) => {
-      const result = expand(child, `${path}.${index}`, depth);
+      const result = expand(child, `${path}.${index}`, depth, owner, isNode);
       return Array.isArray(result) ? result : [result];
     });
     if (!isPlainObject(node)) return node;
+    const author = passedIn.has(node) ? passedIn.get(node) : owner;
     if ('use' in node) {
       const definition = declared[node.use];
       const unknownKeys = Object.keys(node).filter((key) => !['use', 'with', 'children'].includes(key));
@@ -301,18 +351,22 @@ export const expandComponents = (spec, componentList = {}) => {
       const values = resolveValues(node, path, definition);
       if (!values) return null;
       const slotNodes = node.children === undefined ? [] : toArray(node.children);
+      authorOfUse = author;
+      markPassedIn(slotNodes);
       const filled = substitute(definition.spec, values, slotNodes, `${path}<${node.use}>`);
       if (filled === OMIT) {
         problems.push(`${path}<${node.use}>: the whole spec is an omitted optional param. Give the component a spec of its own`);
         return null;
       }
-      return expand(filled, `${path}<${node.use}>`, depth + 1);
+      return expand(filled, `${path}<${node.use}>`, depth + 1, node.use, isNode);
     }
     // Handlers hold no components, and a list of handlers must not be flattened like a list of child nodes.
-    return Object.fromEntries(Object.keys(node).map((key) => [key, key === 'on' ? node[key] : expand(node[key], `${path}.${key}`, depth)]));
+    const result = Object.fromEntries(Object.keys(node).map((key) => [key, key === 'on' ? node[key] : expand(node[key], `${path}.${key}`, depth, owner, SPEC_SLOTS.includes(key))]));
+    if (isNode && author !== null) writtenBy().set(result, author);
+    return result;
   };
 
-  const expanded = expand(spec, '$', 0);
+  const expanded = expand(spec, '$', 0, null, true);
   if (problems.length) {
     const error = new Error(`components: ${problems.length} problem${problems.length === 1 ? '' : 's'}:\n  ${problems.join('\n  ')}`);
     error.problems = problems;

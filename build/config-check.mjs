@@ -7,8 +7,9 @@
 // Which pages exist is not configured: it follows from the folders below pages/ (build/pages.mjs).
 import { didYouMean } from '../src/messages.js';
 import { BASE_PATH_ADVICE, isBasePath } from '../src/base-path-checks.js';
+import { checkProjectChecks } from './project-checks.mjs';
 
-const KEYS = ['outDir', 'assetsDir', 'publicDir', 'hash', 'minify', 'sourceMaps', 'transform', 'manualChunks', 'minSharedChunkBytes', 'replaceModules', 'api', 'fetchFunction', 'renderTimeoutMs', 'stateForBrowser', 'basePath', 'budgets'];
+const KEYS = ['outDir', 'assetsDir', 'publicDir', 'hash', 'minify', 'sourceMaps', 'transform', 'manualChunks', 'minSharedChunkBytes', 'replaceModules', 'api', 'fetchFunction', 'renderTimeoutMs', 'stateForBrowser', 'basePath', 'budgets', 'checks'];
 // What `budgets` may limit: the build measures the first two, `agent-ui check` the others (docs/BUILD.md, "Budgets").
 export const BUDGET_KEYS = ['pageGzipBytes', 'stylesheetsGzipBytes', 'stateBytes', 'elements', 'listRows'];
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -48,6 +49,7 @@ export const checkConfig = (config) => {
       }
     }
   }
+  if (config.checks !== undefined) for (const problem of checkProjectChecks(config.checks)) problems.push(`build config ${problem}`);
   if (config.manualChunks !== undefined) {
     if (!isObject(config.manualChunks) || !Object.values(config.manualChunks).every((files) => Array.isArray(files) && files.every(isText))) add('"manualChunks"', 'must map a chunk name to a list of module paths', "Write manualChunks: { vendor: ['lib/a.js', 'lib/b.js'] }");
   }

@@ -41,7 +41,8 @@ The package is imported by name. Every module has one specifier, types included.
 | `@ehtb/agent-ui/resources`, `/window-events`, `/follow`, `/moves`, `/performance` | plugins; a page downloads only the ones it imports. All the plugins, and when to list each: section 6, "The plugins the package ships" |
 | `@ehtb/agent-ui/spec` | the builders (section 3, "Builders"): `div(...)`, `state(...)`, `act(...)`, `each`, `when`, one function per tag and operator |
 | `@ehtb/agent-ui/mount-element` | `mountElement(api, id, mount)`: how a plugin that draws into an element (a chart, an editor, a map) claims it (section 6, "Plugins that draw into an element") |
-| `@ehtb/agent-ui/spec-tools`, `/components`, `/memoize`, `/sync-apps` | `patchSpec`, `listIds`, `expandComponents`, `defineElement`, `param`, `paramKey`, `slot`, `memoizeItem`, `syncApps` (one-way sync between two separate apps on a page, section 6) |
+| `@ehtb/agent-ui/checks` | `forbidTags(tags, name?)` and the shape of a check, for `checks` in `build.config.mjs`: the project's own rules for its pages (`docs/BUILD.md`, "Project checks"). Node only |
+| `@ehtb/agent-ui/spec-tools`, `/components`, `/memoize`, `/sync-apps` | `patchSpec`, `listIds`, `expandComponents`, `defineElement`, `param`, `paramKey`, `slot`, `madeBy` (which component wrote a node of an expanded spec), `memoizeItem`, `syncApps` (one-way sync between two separate apps on a page, section 6) |
 | `@ehtb/agent-ui/shell`, `/navigation` | `defineShell` (the part of a document that stays while the page changes) and the plugin `withNavigation` (soft links and `route.go`): section 13, "Shell and soft navigation" |
 | `@ehtb/agent-ui/prefetch`, `/view-transition` | the plugins `withPrefetch` (a soft link's document is fetched on hover) and `withViewTransition` (the swap runs as one View Transition); a shell lists them after `withNavigation`: section 13, "Shell and soft navigation" |
 | `@ehtb/agent-ui/pages`, `/url-pattern` | `definePage`, `startPage` and `pageOf` (section 13: the last two are what a generated entry calls), and `compileUrlPattern` / `sortBySpecificity`, the URL patterns that pages and API tables share |
@@ -930,6 +931,8 @@ expandComponents(div(null, Badge({ tone: 'loud' }, 'New')), [Badge]);
 ```
 
 A param may also declare `type`: `'string'`, `'number'`, `'boolean'`, `'handler'` (made with `act`) or `'node'`. The type is checked against literal values at the use (a binding passes for string, number and boolean); it cannot be combined with `options`. The function reports mistakes at the call: an undeclared param (with the nearest declared name), a first argument that is not an object, a bad definition. `defineElement` is a build-time macro like the rest: there is still no instance, and the result is plain spec.
+
+**Who wrote a node.** `madeBy(node)` (from `@ehtb/agent-ui/components`) returns, for a node of an expanded spec, the name of the component whose definition wrote it, or `null` when the page wrote it directly (in a view or a layout, or passed to a component as `children` or as a param; a component that passes a node on is not its author). It is what the project checks of `build.config.mjs` use to fail a raw `button` and let the `Button` component's own through (`docs/BUILD.md`, "Project checks"). The record is kept beside the spec, not in it: the JSON is the same, and a node that was copied after expansion has no author recorded.
 
 `examples/react-converted-components` is a shadcn/ui library converted from the real React sources, with parity tests. `CONVERTING.md` is the step-by-step procedure for converting a component.
 

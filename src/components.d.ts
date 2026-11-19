@@ -21,6 +21,9 @@ export type ComponentChild = SpecNode | ComponentUse;
 /** Expands {use, with, children} nodes into plain spec. Throws an Error whose message lists the problems, one per line; they are also on `error.problems`. */
 export function expandComponents(spec: object, components?: Record<string, ComponentDefinition | ElementFunction<any>> | ElementFunction<any>[]): SpecNode;
 
+/** The name of the component whose definition wrote this node of an expanded spec, or null when it was written directly (in a view or layout, or passed to a component as children or a param). For project checks (`@ehtb/agent-ui/checks`). */
+export function madeBy(node: object): string | null;
+
 type Declarations = Record<string, ParamDeclaration>;
 type OptionKeys<Declaration> = Declaration extends { options: infer Options } ? keyof Options & string : never;
 type ParamValue<Declaration> = [OptionKeys<Declaration>] extends [never] ? unknown : OptionKeys<Declaration>;

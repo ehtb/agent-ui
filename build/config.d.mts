@@ -1,4 +1,5 @@
 import type { RequestContext } from '../server/request.mjs';
+import type { ProjectCheck } from './project-checks.mjs';
 /** One page found in the folders below pages/ (added by loadConfig; never written in the configuration). */
 export interface PageRecord {
   /** The file and folder name in the output: "index" for "/", "event-id" for "/event/:id". */
@@ -37,6 +38,8 @@ export interface BuildConfig {
   /** The path the site is served below, for example '/shop' (docs/BUILD.md, "A site below a base path"). Default: the root. */
   basePath?: string;
   /** Limits that turn a page over them into an error (docs/BUILD.md, "Budgets"): pageGzipBytes and stylesheetsGzipBytes fail the build; the others are problems of `agent-ui check`. */
+  /** The project's own rules for its pages, run over every finished spec by `agent-ui check` and a production build (docs/BUILD.md, "Project checks"). */
+  checks?: ProjectCheck[];
   budgets?: { pageGzipBytes?: number; stylesheetsGzipBytes?: number; stateBytes?: number; elements?: number; listRows?: number };
 }
 /** The configuration after loadConfig: the user's options plus the pages, the entries the bundler builds from them and the configuration file they came from. */

@@ -32,6 +32,7 @@ import { validate } from '../src/validate.js';
 import { writeStyleModules } from './css-graph.mjs';
 import { importPath } from './import-path.mjs';
 import { writeFileIfChanged } from './write-file.mjs';
+import { runPageChecks } from './project-checks.mjs';
 
 export const PAGES_DIRECTORY = 'pages';
 export const GENERATED_DIRECTORY = '.agent-ui';
@@ -142,7 +143,7 @@ const pruneGenerated = (directory, keep) => {
 const generatedPage = (page) => ({ name: page.name, path: page.path, app: `${GENERATED_DIRECTORY}/${page.name}/app.js`, file: page.file, viewFile: page.viewFile });
 
 let writes = 0; // makes two writes in one millisecond differ
-export const writeGeneratedModules = async (projectRoot, pages, { dev = false, directory = PAGES_DIRECTORY, basePath = '' } = {}) => {
+export const writeGeneratedModules = async (projectRoot, pages, { dev = false, directory = PAGES_DIRECTORY, basePath = '', checks = [] } = {}) => {
   const generated = resolve(projectRoot, GENERATED_DIRECTORY);
   // Node keeps an imported module for the life of the process. The server module, and the page and view it imports, carry a
   // stamp of this write, so a second build in one process (a test, a script) evaluates an edited page.js or view.js again. What those
@@ -208,6 +209,7 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
   }
   if (!dev) {
     const shells = new Map(); // shell name -> { text, page } of the page that gave its content
+    const checkedShells = new Set(); // a shell's content is the same for every page of it: the project's checks read it once
     for (const page of pages) {
       const appFile = join(generated, page.name, 'app.js');
       let module;
@@ -220,6 +222,9 @@ export const writeGeneratedModules = async (projectRoot, pages, { dev = false, d
       // does not carry the validator).
       const problems = validate(module.spec, { namespaces: module.namespaces });
       if (problems.length) fail(page.file, `the finished spec is not valid:\n  ${problems.join('\n  ')}`, 'Fix view.js, its layout or its pending view; a production build checks the spec it ships as data');
+      // The project's own rules (`checks` in build.config.mjs) read the same finished spec.
+      const ruleProblems = runPageChecks(checks, { module, file: page.file, checkedShells });
+      if (ruleProblems.length) fail(page.file, `the project's checks found ${ruleProblems.length === 1 ? 'a problem' : `${ruleProblems.length} problems`}:\n  ${ruleProblems.join('\n  ')}`, 'Fix what each line says; the rules are the `checks` of build.config.mjs');
       writeGenerated(
         join(generated, page.name, 'spec.js'),
         [
@@ -272,5 +277,5 @@ export const expandPages = async (config, projectRoot, options = {}) => {
   const pages = discoverPages(projectRoot);
   // A deployed server runs what `agent-ui build` generated, from code it may not be able to write.
   if (options.readOnly) return { ...config, pages: pages.map(generatedPage) };
-  return { ...config, ...(await writeGeneratedModules(projectRoot, pages, { ...options, basePath: config.basePath ?? '' })) };
+  return { ...config, ...(await writeGeneratedModules(projectRoot, pages, { ...options, basePath: config.basePath ?? '', checks: config.checks })) };
 };

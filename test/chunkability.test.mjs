@@ -26,7 +26,7 @@ const EXPECTED = {
   'src/resources.js': ['src/resources.js', 'src/messages.js', 'src/spec-core.js'],
   'src/window-events.js': ['src/window-events.js', 'src/window-events-checks.js', 'src/grammar.js', 'src/handler-checks.js', 'src/namespaces.js', ...PRIMITIVES],
   'src/spec-tools.js': ['src/spec-tools.js', 'src/spec-walk.js', 'src/grammar.js', 'src/handler-checks.js', 'src/error-messages.js', 'src/validate.js', 'src/namespaces.js', 'src/nesting.js', ...PRIMITIVES],
-  'src/components.js': ['src/components.js', ...PRIMITIVES],
+  'src/components.js': ['src/components.js', 'src/spec-walk.js', ...PRIMITIVES],
   // Builders: the dev checks (swapped for a stub in production) bring the tables of the grammar, not the validator.
   'src/spec.js': ['src/spec.js', 'src/spec-checks.js', 'src/handler-checks.js', 'src/hydrate.js', 'src/base-path.js', 'src/grammar.js', 'src/namespaces.js', ...PRIMITIVES],
   'src/sync-apps.js': ['src/sync-apps.js', 'src/sync-apps-checks.js', ...PRIMITIVES],

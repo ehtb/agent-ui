@@ -31,6 +31,7 @@ The package is split so that each part can be imported, bundled and dropped on i
 | `@ehtb/agent-ui/window-events`, `/components`, `/spec-tools`, `/memoize` | plugins and tools | the shared modules, plus the validator for `spec-tools` |
 | `@ehtb/agent-ui/spec` | spec builders | the shared modules; in development also the call-site checks (`src/spec-checks.js`) and the validator's grammar, in production a stub replaces the checks |
 | `@ehtb/agent-ui/devtools` | the debug console | nothing; an app made with `debug: true` fetches it on demand |
+| `@ehtb/agent-ui/checks` | the project's own rules for its pages (`forbidTags`) | Node only: `build.config.mjs` imports it, a browser entry cannot reach it |
 | `@ehtb/agent-ui/build`, `@ehtb/agent-ui/build/build.mjs`, `/build/config.mjs`, `/build/presets.mjs`, `/build/prerender.mjs`, `@ehtb/agent-ui/server/*.mjs`, `@ehtb/agent-ui/cli/ssr-server.mjs`, `/cli/static-handler.mjs` | the build pipeline, the render handler and the development server | Node only; nothing in the browser entries can reach them |
 
 `test/chunkability.test.mjs` builds the module graph of every browser-side entry and asserts exactly what it reaches, so a plugin that starts importing another plugin, or an entry that reaches the build or the devtools, fails there. `package.json` declares `"sideEffects": ["**/*.css"]`: no JavaScript module does anything when it is imported, so a bundler such as esbuild or Rollup may drop whatever a project does not use. agent-ui's own bundler works per module (no tree shaking inside a module, see "Limits"), which is why the entries are small modules.
@@ -202,6 +203,7 @@ The generated file is third-party code: the framework imports nothing from it, a
 | `stateForBrowser` | `(state, request) => state`: which state the document's state script carries after the page rendered. Keep the page's namespaces and keys; remove a server-only key. The markup is rendered from the full state, and a declared default is in the browser bundle. The request is `null` during a static build and `agent-ui check`. |
 | `basePath` | The path the site is served below, for example `'/shop'` (default: the root). Specs, page folders, `route.path`, resources and the API keep the site's own paths; the build, the runtime, the render server and soft navigation add or remove the base on the wire. See "A site below a base path". |
 | `budgets` | `{ pageGzipBytes?, stateBytes?, elements?, listRows? }`: limits that turn a page over them into an error. `pageGzipBytes` fails the build; the others are `agent-ui check` problems. See "Budgets". |
+| `checks` | `[forbidTags({ button: 'Use Button from ui/button.js' }), { name, node }]`: the project's own rules for its pages, run over every finished spec and shell by `agent-ui check` and a production build. See "Project checks". |
 | `publicDir` | Directory copied as it is to the output root (a symbolic link in it is refused: it would publish what it points to), so `public/data.json` becomes `/data.json`. Use it for data files and images that pages fetch by URL. |
 
 **The configuration is checked before anything runs.** An option that is not in this table fails with the list of allowed options and, for a near miss, `Did you mean "outDir"?`. A value of the wrong kind says what to write. The build deletes its output directory first, so it refuses an `outDir` that is the project root, that lies outside it, or that contains the pages, a `publicDir` or a `package.json`.
@@ -390,6 +392,35 @@ CSS is not rewritten: a `url()` in a stylesheet is relative to the stylesheet (`
 | `listRows` | `agent-ui check` | The rows of the largest list of a rendered page. Every row is rendered: there is no virtualization, so a long list is a page of the data at a time. |
 
 Without budgets the numbers are still printed: the build report has a table of pages with their startup size, and `agent-ui check` a table of every URL it rendered. What one action costs is measured in tests with `measureAction` and `assertCost` (API.md, "Testing").
+
+## Project checks
+
+A rule that an agent breaks again and again (a button comes from `ui/button.js`, never the raw builder) is written once in `build.config.mjs`, so it fails with the fix instead of being enforced by hand in review. `agent-ui check` runs the checks over the finished spec of every page and shell (the problems are listed with the page that has them), and a production build refuses a page that fails one. `agent-ui dev` does not run them: run `agent-ui check`.
+
+```js
+// build.config.mjs
+import { forbidTags } from '@ehtb/agent-ui/checks';
+export default {
+  checks: [
+    forbidTags({ button: 'Use Button from ui/button.js' }),
+    { name: 'icon-buttons-have-a-label', node: ({ node }) => node.tag === 'button' && !node.children && !node.props?.['aria-label'] && { problem: 'an icon button has no label', fix: "Add 'aria-label'" } },
+  ],
+};
+```
+
+A check is `{ name, node }`; the name is lower-case words joined by dashes, unique, and appears in the report. `node(context)` is called for every node of a spec (an element, a `when`, an `each`) and returns nothing, or `{ problem, fix }` (or a list of them): two plain sentences, reported as `where: problem. fix (check "name")`, the shape of the framework's own messages. The context:
+
+| Key | Meaning |
+|---|---|
+| `node` | The node, a plain object of the finished spec (`tag`, `props`, `children`, `id`, ...). |
+| `madeBy` | The name of the component whose definition wrote the node, or `null` when it was written directly in a view or a layout (`madeBy` of `@ehtb/agent-ui/components`). A node passed to a component as `children` or as a param is still its author's, also through a component that passes it on. |
+| `parent` | The node that holds it, or `null` for the root. |
+| `path` | Where it is, for example `$.children[2].children[0]`; the report adds the node's `id` when it has one. |
+| `where` | `'page'` or `'shell'`. |
+
+`forbidTags({ tag: fix, ... }, name?)` fails a tag that a page writes directly (`madeBy === null`): the `button` inside the `Button` component is that component's own, and is where the fix sends the page. A tag that is not in the grammar and an empty fix are errors where `forbidTags` is called; a second `forbidTags` without its own name, like any other duplicate name, is an error when the configuration is read. A check that throws, or that returns something that is not `{ problem, fix }`, is reported as a problem of its own. A check reads data and runs in Node: it never reaches the browser.
+
+What `madeBy` knows comes from `expandComponents`, in the process that builds the page (`agent-ui check`, a production build): a spec that was not expanded by it, or whose nodes were copied afterwards, has no author recorded and every node counts as written directly.
 
 ## Production checklist
 
