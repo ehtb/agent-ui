@@ -9,7 +9,7 @@ import { didYouMean } from '../src/messages.js';
 import { BASE_PATH_ADVICE, isBasePath } from '../src/base-path-checks.js';
 import { checkProjectChecks } from './project-checks.mjs';
 
-const KEYS = ['outDir', 'assetsDir', 'publicDir', 'hash', 'minify', 'sourceMaps', 'transform', 'manualChunks', 'minSharedChunkBytes', 'replaceModules', 'api', 'fetchFunction', 'renderTimeoutMs', 'stateForBrowser', 'basePath', 'budgets', 'checks'];
+const KEYS = ['outDir', 'assetsDir', 'publicDir', 'hash', 'minify', 'sourceMaps', 'transform', 'treeShake', 'manualChunks', 'minSharedChunkBytes', 'replaceModules', 'api', 'fetchFunction', 'renderTimeoutMs', 'stateForBrowser', 'basePath', 'budgets', 'checks'];
 // What `budgets` may limit: the build measures the first two, `agent-ui check` the others (docs/BUILD.md, "Budgets").
 export const BUDGET_KEYS = ['pageGzipBytes', 'stylesheetsGzipBytes', 'stateBytes', 'elements', 'listRows'];
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -33,8 +33,8 @@ export const checkConfig = (config) => {
   if (config.publicDir !== undefined && config.publicDir !== null && !isText(config.publicDir) && !(Array.isArray(config.publicDir) && config.publicDir.every(isText))) {
     add('"publicDir"', 'must be a directory name or a list of them', "Write publicDir: 'public'");
   }
-  for (const key of ['transform', 'fetchFunction', 'stateForBrowser']) {
-    if (config[key] !== undefined && config[key] !== null && typeof config[key] !== 'function') add(`"${key}"`, 'must be a function', `Write ${key}: (…) => …`);
+  for (const key of ['transform', 'treeShake', 'fetchFunction', 'stateForBrowser']) {
+    if (config[key] !== undefined && config[key] !== null && typeof config[key] !== 'function') add(`"${key}"`, 'must be a function', key === 'treeShake' ? 'Write treeShake: esbuildTreeShake(esbuild), with import { esbuildTreeShake } from \'@ehtb/agent-ui/build/tree-shake.mjs\' (docs/BUILD.md, "Tree shaking")' : `Write ${key}: (…) => …`);
   }
   if (config.renderTimeoutMs !== undefined && (!Number.isInteger(config.renderTimeoutMs) || config.renderTimeoutMs < 1)) {
     add('"renderTimeoutMs"', 'must be a whole number of milliseconds, 1 or more', 'Write renderTimeoutMs: 2000 (the default), or a larger budget for a page whose data is slow');

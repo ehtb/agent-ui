@@ -1,6 +1,6 @@
 {
   "name": "@ehtb/agent-ui",
-  "version": "0.6.0",
+  "version": "0.7.0-pre.3",
   "description": "A UI library with server rendering, for agents to write, check and maintain: the UI is a JSON spec, state is plain data, behavior goes through named, typed actions. No dependencies.",
   "license": "MIT",
   "author": "ehtb",
@@ -134,6 +134,10 @@
     "./build/config.mjs": {
       "types": "./build/config.d.mts",
       "default": "./build/config.mjs"
+    },
+    "./build/tree-shake.mjs": {
+      "types": "./build/tree-shake.d.mts",
+      "default": "./build/tree-shake.mjs"
     },
     "./build/presets.mjs": {
       "types": "./build/presets.d.mts",

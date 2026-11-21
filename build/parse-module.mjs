@@ -53,6 +53,13 @@ export const moduleMarker = (modulePath) => `⟦module:${modulePath}⟧`;
 export const dynamicImportMarker = (modulePath) => `⟦dynamic:${modulePath}⟧`;
 
 const countLines = (text) => text.split('\n').length - 1;
+
+// The first line of `code` (a module body, which has no import or export statement left) that still looks like one: { line, text }
+// with the line counted from 1, or null. The tree shaking checks what a tool returned with the same rule (tree-shake.mjs).
+export const findModuleSyntax = (code) => {
+  const index = maskNonCode(code).split('\n').findIndex((line) => /(?:^|[;{}])\s*(?:import|export)\b(?!\s*(?:[(.:=;,}]|$))/.test(line));
+  return index < 0 ? null : { line: index + 1, text: code.split('\n')[index].trim() };
+};
 // The line (counting from 1) where a match starts, for the messages.
 export const lineOf = (text, index) => countLines(text.slice(0, index)) + 1;
 
@@ -252,9 +259,8 @@ export const parseModule = ({ path, sourceText: rawSourceText, resolveImport, re
 
   // Anything that still looks like an import or export statement was not understood by the patterns above. Emitting it
   // would produce a chunk that fails in the browser, so stop here with the file and line.
-  const maskedLines = maskNonCode(body).split('\n');
-  const leftoverIndex = maskedLines.findIndex((line) => /(?:^|[;{}])\s*(?:import|export)\b(?!\s*(?:[(.:=;,}]|$))/.test(line));
-  if (leftoverIndex >= 0) throw new BuildError(`${path}:${leftoverIndex + 1}: unsupported import/export syntax: ${body.split('\n')[leftoverIndex].trim()}. Use import { a } from './x.js' and export const a = ...`);
+  const leftover = findModuleSyntax(body);
+  if (leftover) throw new BuildError(`${path}:${leftover.line}: unsupported import/export syntax: ${leftover.text}. Use import { a } from './x.js' and export const a = ...`);
 
   return {
     path,

@@ -100,15 +100,16 @@ const collectLinks = (spec) => {
 // What the bundler refuses in the modules the entries reach, one message per problem, in the order a single read finds them. The
 // graph collects the problems itself (`problems`), so a broken source costs the same as a good one and a file several pages share
 // is reported once.
-const findSourceProblems = ({ root, entries, replacements, performance = false }) => {
+const findSourceProblems = ({ root, entries, replacements, performance = false, treeShaken = false }) => {
   const problems = [];
   if (!entries?.length) return problems;
   const graph = buildModuleGraph({ projectRoot: root, entries, replacements, problems });
-  if (performance) problems.push(...findUnusedExportProblems(graph));
+  // With `treeShake` on, an export no page imports is left out of the build: there is nothing to report.
+  if (performance && !treeShaken) problems.push(...findUnusedExportProblems(graph));
   return problems;
 };
 
-// The bundler includes whole modules without tree shaking (docs/BUILD.md, "Pages and chunks"), so an export in a project module
+// The bundler includes whole modules unless `treeShake` is on (docs/BUILD.md, "Tree shaking"), so an export in a project module
 // that no page imports is downloaded as unused JavaScript by every page that imports the module.
 const IMPORT_BINDING = /^const\s+(?:\{([^}]+)\}|([\w$]+))\s*=\s*⟦module:([^⟧]+)⟧(?:\.default)?;$/;
 const findUnusedExportProblems = (graph) => {
@@ -139,7 +140,7 @@ const findUnusedExportProblems = (graph) => {
     if (used === '*') continue;
     for (const exportedName of record.exportedBindings.keys()) {
       if (!used?.has(exportedName)) {
-        problems.push(`${modulePath}: exports "${exportedName}", which no page imports. The bundler includes whole modules (no tree shaking), so every page that imports ${modulePath} downloads "${exportedName}" as unused JavaScript. Remove the export, or move it to its own module`);
+        problems.push(`${modulePath}: exports "${exportedName}", which no page imports. The bundler includes whole modules (treeShake is off), so every page that imports ${modulePath} downloads "${exportedName}" as unused JavaScript. Remove the export, turn treeShake on in build.config.mjs (docs/BUILD.md, "Tree shaking"), or move it to its own module`);
       }
     }
   }
@@ -174,7 +175,7 @@ export const checkProject = async ({ config, root = process.cwd(), performance =
   const measurements = []; // { page, url, elements, listRows, listInside, stateBytes } of every page rendered
   const budgets = config.budgets ?? {};
   let pagesChecked = 0;
-  problems.push(...findSourceProblems({ root, entries: config.entries, replacements: config.replaceModules ?? {}, performance }));
+  problems.push(...findSourceProblems({ root, entries: config.entries, replacements: config.replaceModules ?? {}, performance, treeShaken: Boolean(config.treeShake) }));
   const pages = config.pages ?? [];
   // Each page's pattern is compiled once, not once per link and once per URL listed in `paths`. Most specific first, so the
   // first pattern that matches is the page the server would answer with.

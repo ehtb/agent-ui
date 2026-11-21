@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const { defineElement, expandComponents, madeBy, param, slot } = await import('../src/components.js');
+const { defineElement, expandComponents, madeBy, markMadeBy, param, slot } = await import('../src/components.js');
 const { button, div, p, span } = await import('../src/spec.js');
 const { checkProjectChecks, forbidTags, runProjectChecks } = await import('../build/project-checks.mjs');
 const { checkConfig } = await import('../build/config-check.mjs');
@@ -58,6 +58,47 @@ test('the table is not part of the spec: it expands to the same plain data as be
   assert.deepEqual(page, { tag: 'div', children: { tag: 'button', props: { class: 'btn' }, children: 'Save' } });
   assert.equal(JSON.stringify(page), JSON.stringify({ tag: 'div', children: { tag: 'button', props: { class: 'btn' }, children: 'Save' } }));
   assert.equal(madeBy({ tag: 'button' }), null, 'a node that never went through expandComponents');
+});
+
+// A component written as a plain function: nothing reads its definition, so it says which nodes are its own.
+const Dialog = (title, children) => markMadeBy('Dialog', div({ class: 'dialog' }, p(null, title), button({ id: 'close' }, 'Close'), div({ class: 'body' }, children)), children);
+
+test('markMadeBy names a plain function component as the author of the nodes it writes, and leaves what the page passed in to the page', () => {
+  const inside = button({ id: 'inside' }, 'Save');
+  const dialog = Dialog('Sure?', inside);
+  assert.equal(madeBy(dialog), 'Dialog');
+  assert.equal(madeBy(dialog.children[1]), 'Dialog', 'its own button');
+  assert.equal(madeBy(dialog.children[2]), 'Dialog', 'the div that holds the children');
+  assert.equal(madeBy(inside), null, 'the page wrote this one, the Dialog only holds it');
+  const several = Dialog('Sure?', [button(null, 'a'), p(null, button(null, 'b'))]);
+  assert.deepEqual(several.children[2].children.map(madeBy), [null, null], 'a list of children, and what is below them');
+});
+
+test('a node that has an author keeps it: through another component the function uses, and through the copy expandComponents makes', () => {
+  const Confirm = (children) => markMadeBy('Confirm', div(null, Dialog('Sure?', children), Button({ label: 'Yes' })), children);
+  const confirm = Confirm(button({ id: 'page-button' }, 'raw'));
+  assert.equal(madeBy(confirm), 'Confirm');
+  assert.equal(madeBy(confirm.children[0]), 'Dialog', 'the Dialog marked its own nodes first');
+  const page = expandComponents(div({ id: 'page' }, Card(null, Dialog('Sure?', button({ id: 'raw' }, 'raw')))), [Card, Button]);
+  const dialog = page.children.children[0];
+  assert.equal(madeBy(page.children), 'Card');
+  assert.equal(madeBy(dialog), 'Dialog', 'the copy has the author of the original');
+  assert.equal(madeBy(dialog.children[1]), 'Dialog');
+  assert.equal(madeBy(dialog.children[2].children), null, 'what the page passed in is still the page\'s, through the copy');
+});
+
+test('forbidTags leaves the button a plain function component writes and fails the one a page passes into it', () => {
+  const spec = expandComponents(div({ id: 'page' }, Dialog('Sure?', button({ id: 'raw' }, 'raw'))), []);
+  assert.deepEqual(runProjectChecks([rawButton], { spec, file: 'pages/page.js' }), [
+    'pages/page.js: $.children.children[2].children (id "raw"): a button is written directly. Use Button from ui/button.js (check "forbid-tags")',
+  ]);
+});
+
+test('markMadeBy says what is wrong where it is called', () => {
+  const expectError = (call, message) => assert.throws(call, { message });
+  expectError(() => markMadeBy('', div(null)), "markMadeBy: the name must be the component's name, a non-empty string, got \"\". Write return markMadeBy('Dialog', node, children)");
+  expectError(() => markMadeBy('Dialog', [div(null)]), "markMadeBy('Dialog'): the second argument must be the node the component returns (a plain object made with the builders), got an array. Write return markMadeBy('Dialog', div(...), children), one node; wrap several in a div or a fragment node");
+  expectError(() => markMadeBy('Dialog', 'text'), /got string\. Write return markMadeBy\('Dialog', div\(\.\.\.\), children\)/);
 });
 
 // ----------------------------------------------------------------------------------------------- a check, and its report

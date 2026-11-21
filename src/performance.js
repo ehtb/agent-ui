@@ -8,7 +8,6 @@
 //       * render-blocking `<script src="...">` in `head.tags` without `defer`, `async` or `type: 'module'`
 //       * `<img>` without `width` and `height` (causes Cumulative Layout Shift, CLS)
 //       * `<img>` with both `loading: 'lazy'` and `fetchpriority: 'high'` (contradictory LCP priority)
-//       * namespaces that declare `resources` on a page without `ready(state)` (SSR renders before data arrives, delaying LCP)
 //       * `resources` with `owns` on a page with `ready(state)` that omit `revalidate: 'never'` (browser fetches the same data again on mount)
 //       * namespaces listed on a page that nothing in the view, head or other namespaces reads or calls (unused JavaScript)
 //   - Live DOM and state checks (at mount and after each action):
@@ -19,7 +18,7 @@
 //   - Browser stylesheets and Web Vitals (`PerformanceObserver`, when running in a browser):
 //       * stylesheets in `document.styleSheets` where more than `unusedCssRatio` (default 0.5, for sheets with >= 10 rules) match no element
 //       * Largest Contentful Paint (`largest-contentful-paint`): flags an LCP `<img>` that has `loading="lazy"` or lacks `fetchpriority="high"`, naming its `data-id`
-//       * Cumulative Layout Shift (`layout-shift`): flags shifts over 0.1 without recent input, naming the shifted elements' `data-id`s
+//       * Cumulative Layout Shift (`layout-shift`): adds up the shifts without recent input in a session window, as Lighthouse does (each less than 1 s after the one before, at most 5 s), and flags a window over 0.1 once, naming the shifted elements' `data-id`s
 //       * Long main-thread tasks (`longtask`): flags tasks over `longTaskMs` (default 50 ms) with the last action that ran
 import { didYouMean, fail } from './messages.js';
 import { isBinding, isPlainObject, markPagePlugin, toArray } from './spec-core.js';
@@ -180,9 +179,7 @@ export const auditSpecPerformance = (spec, options = {}) => {
       const resources = toArray(definition.resources);
       if (resources.length > 0) {
         usedNamespaces.add(name);
-        if (hasReady === false) {
-          problems.push(`${prefix}namespace "${name}": declares resources, but the page has no ready(state) function. The server renders before the data arrives, delaying LCP until the browser fetches it. Add ready: (state) => ... to page.js`);
-        } else if (hasReady === true) {
+        if (hasReady === true) {
           resources.forEach((resource, index) => {
             if (isPlainObject(resource) && Array.isArray(resource.owns) && resource.owns.length > 0 && resource.revalidate !== 'never') {
               problems.push(`${prefix}namespace "${name}" resources[${index}]: the server already waits for ready(state), but the browser fetches this resource again on mount. Add revalidate: 'never' (with owns) so the browser trusts the server's data on first paint`);
@@ -400,14 +397,29 @@ const installPerformance = (api, options = {}, environment = null) => {
       }
     });
 
+    // Cumulative Layout Shift the way Lighthouse reads it: the shifts that follow no input are added up in a session window (each less than a
+    // second after the one before, the window at most five seconds long), and the score is the worst window. One shift is rarely over 0.1;
+    // several small ones are. Reported once, when a window passes the limit, with what moved in it until then.
+    const shiftWindow = { value: 0, shifts: 0, start: 0, last: 0, ids: new Set(), reported: false };
     observe('layout-shift', (entry) => {
-      if (entry.hadRecentInput || !(entry.value > 0.1)) return;
-      const ids = [...new Set((entry.sources ?? []).map((source) => source.node?.getAttribute?.('data-id') ?? source.node?.closest?.('[data-id]')?.getAttribute?.('data-id')).filter(Boolean))];
+      if (entry.hadRecentInput || !(entry.value > 0)) return;
+      const time = entry.startTime ?? 0;
+      if (shiftWindow.shifts === 0 || time - shiftWindow.last >= 1000 || time - shiftWindow.start >= 5000) Object.assign(shiftWindow, { value: 0, shifts: 0, start: time, ids: new Set() });
+      shiftWindow.value += entry.value;
+      shiftWindow.shifts++;
+      shiftWindow.last = time;
+      for (const source of entry.sources ?? []) {
+        const id = source.node?.getAttribute?.('data-id') ?? source.node?.closest?.('[data-id]')?.getAttribute?.('data-id');
+        if (id) shiftWindow.ids.add(id);
+      }
+      if (shiftWindow.reported || !(shiftWindow.value > 0.1)) return;
+      shiftWindow.reported = true;
+      const ids = [...shiftWindow.ids];
       const targets = ids.length ? ` affecting ${ids.map((id) => `[data-id="${id}"]`).join(', ')}` : '';
       report(
         'cls',
-        `${prefix}layout shift of ${entry.value.toFixed(3)} (over Lighthouse's 0.1 threshold)${targets}. Give images and async containers explicit width and height or min-height in CSS`,
-        { value: entry.value, ids },
+        `${prefix}layout shifts total ${shiftWindow.value.toFixed(3)} in one session window (${shiftWindow.shifts} ${shiftWindow.shifts === 1 ? 'shift' : 'shifts'}; over Lighthouse's 0.1 threshold)${targets}. Reserve the space before the content arrives: width and height on images, embeds and iframes, a min-height on a container that fills later, and no content inserted above what is already shown`,
+        { value: shiftWindow.value, shifts: shiftWindow.shifts, ids },
       );
     });
 

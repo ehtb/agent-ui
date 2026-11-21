@@ -58,6 +58,7 @@ test('auditSpecPerformance checks render-blocking head scripts, unsized and lazy
     ul({ id: 'list' }, each('catalog.items', 'id', li(null, item('name')))),
   );
 
+  // A page without `ready(state)` is not reported: whether the server should wait for data is the page's decision (a page may render without it on purpose).
   const withoutReady = auditSpecPerformance(spec, {
     head: {
       title: 'Shop',
@@ -77,7 +78,6 @@ test('auditSpecPerformance checks render-blocking head scripts, unsized and lazy
     'pages/page.js: head.tags[0]: <script src="/blocking.js"> in <head> blocks rendering and delays FCP and LCP. Add defer: true or async: true to props, or move the script to head.bodyTags',
     'pages/page.js: img "hero": <img> has no width and height, so the layout shifts when it loads (CLS). Add width and height to props',
     'pages/page.js: img "hero": <img> has both loading="lazy" and fetchpriority="high". Remove loading="lazy" on an above-the-fold LCP image, or remove fetchpriority="high"',
-    'pages/page.js: namespace "catalog": declares resources, but the page has no ready(state) function. The server renders before the data arrives, delaying LCP until the browser fetches it. Add ready: (state) => ... to page.js',
     'pages/page.js: namespace "unusedFeature": listed in namespaces, but nothing in the view, head or other namespaces reads or calls it. Remove "unusedFeature" from namespaces so the page does not download unused JavaScript',
   ]);
 
@@ -250,18 +250,25 @@ test('browser stylesheets and PerformanceObserver (LCP, CLS, Long Tasks) are rep
       },
     },
   ]);
-  clsObserver.emit([
-    {
-      hadRecentInput: false,
-      value: 0.25,
-      sources: [{ node: { getAttribute: (name) => (name === 'data-id' ? 'hero-box' : null) } }],
-    },
-  ]);
+  // Shifts under 0.1 each are added up in a session window, as Lighthouse does.
+  const shift = (startTime, value, id, hadRecentInput = false) => ({ hadRecentInput, startTime, value, sources: [{ node: { getAttribute: (name) => (name === 'data-id' ? id : null) } }] });
+  const reportedCls = () => findings.filter((finding) => finding.kind === 'cls');
+  clsObserver.emit([shift(100, 0.06, 'old-box')]);
+  clsObserver.emit([shift(2000, 0.06, 'old-box')]); // a second or more after the last shift: another window, the two do not add up
+  assert.equal(reportedCls().length, 0, '0.06 and 0.06 are two windows, and neither is over 0.1');
+  clsObserver.emit([shift(4000, 0.04, 'hero-box'), shift(4500, 0.04, 'hero-box', true)]); // the second follows the visitor's input: not counted
+  clsObserver.emit([shift(4800, 0.04, 'hero-box')]);
+  assert.equal(reportedCls().length, 0, '0.08 counted so far: 0.12 would pass the limit, but 0.04 of it follows an input');
+  clsObserver.emit([shift(5300, 0.04, 'caption')]);
+  clsObserver.emit([shift(5400, 0.01, 'caption')]);
   longTaskObserver.emit([{ duration: 120 }]);
 
   assert.equal(findings.some((finding) => finding.kind === 'lcp-lazy-image' && /LCP element <img data-id="hero-image"> \(1420 ms\) has loading="lazy"/.test(finding.message)), true);
   assert.equal(findings.some((finding) => finding.kind === 'lcp-priority' && /LCP element <img data-id="banner-image"> \(980 ms\) does not have fetchpriority="high"/.test(finding.message)), true);
-  assert.equal(findings.some((finding) => finding.kind === 'cls' && /layout shift of 0\.250 \(over Lighthouse's 0\.1 threshold\) affecting \[data-id="hero-box"\]/.test(finding.message)), true);
+  const cls = reportedCls();
+  assert.equal(cls.length, 1, 'reported once, when the window passed 0.1');
+  assert.match(cls[0].message, /^page "\/": layout shifts total 0\.120 in one session window \(3 shifts; over Lighthouse's 0\.1 threshold\) affecting \[data-id="hero-box"\], \[data-id="caption"\]\. Reserve the space before the content arrives: width and height on images, embeds and iframes, a min-height on a container that fills later, and no content inserted above what is already shown$/);
+  assert.deepEqual({ ...cls[0].details, value: Number(cls[0].details.value.toFixed(3)) }, { value: 0.12, shifts: 3, ids: ['hero-box', 'caption'] });
   assert.equal(findings.some((finding) => finding.kind === 'long-task' && /main-thread task took 120 ms \(over 50 ms; last action: startup\)/.test(finding.message)), true);
 
   ui.destroy();
@@ -404,11 +411,15 @@ test('agent-ui check --performance and budgets.stylesheetsGzipBytes report perfo
     // Performance check reports unused module exports, render-blocking head scripts, unsized images, and unused namespaces.
     const perf = await checkProject({ config, root: project, performance: true });
     assert.deepEqual(perf.problems, [
-      'shared/helpers.js: exports "unusedComponent", which no page imports. The bundler includes whole modules (no tree shaking), so every page that imports shared/helpers.js downloads "unusedComponent" as unused JavaScript. Remove the export, or move it to its own module',
+      'shared/helpers.js: exports "unusedComponent", which no page imports. The bundler includes whole modules (treeShake is off), so every page that imports shared/helpers.js downloads "unusedComponent" as unused JavaScript. Remove the export, turn treeShake on in build.config.mjs (docs/BUILD.md, "Tree shaking"), or move it to its own module',
       'pages/page.js: head.tags[0]: <script src="/blocking.js"> in <head> blocks rendering and delays FCP and LCP. Add defer: true or async: true to props, or move the script to head.bodyTags',
       'pages/page.js: img "hero": <img> has no width and height, so the layout shifts when it loads (CLS). Add width and height to props',
       'pages/page.js: namespace "extra": listed in namespaces, but nothing in the view, head or other namespaces reads or calls it. Remove "extra" from namespaces so the page does not download unused JavaScript',
     ]);
+
+    // With treeShake on, an export no page imports is left out of the build, so it is not reported.
+    const shaken = await checkProject({ config: { ...config, treeShake: () => '' }, root: project, performance: true });
+    assert.ok(!shaken.problems.some((problem) => problem.includes('unusedComponent')), shaken.problems.join('\n'));
 
     // Build budget stylesheetsGzipBytes fails when a page's gzipped CSS exceeds the budget.
     const prodConfig = await loadConfig({ root: project, mode: { dev: false } });

@@ -71,6 +71,7 @@ Each stage is a plain function in `build/`, usable and testable on its own insid
 | Stage | File | Job |
 |---|---|---|
 | 1. Module graph | `parse-module.mjs`, `module-graph.mjs` | Parse every module reachable from the entries (the dialect is listed below), resolve imports, order modules dependencies first, detect cycles. Dynamic `import()` targets become extra roots. |
+| 1b. Tree shaking (optional) | `tree-shake.mjs` | With `treeShake` in the configuration: leave out the exports no page imports and the declarations nothing uses, with a tool the project plugs in ("Tree shaking", below). Without it the graph goes on unchanged. |
 | 2. Chunk plan | `assign-chunks.mjs` | Decide which modules are bundled together (rules below). |
 | 3. Generation | `generate-chunks.mjs` | Emit one readable ES module per chunk and one CSS file per chunk that has styles. Chunks are generated in dependency order, so a content hash can include the file names of the chunks it imports. |
 | 4. Output | `write-site.mjs` | Write assets, HTML pages and `manifest.json`. Format the build report. |
@@ -93,7 +94,7 @@ Each stage is a plain function in `build/`, usable and testable on its own insid
 
 Splitting is by page, and it is automatic: every page is an entry, so a page downloads the code it imports and the code its pages share, and nothing else. What to do with it:
 
-- **Import what a page uses, from the module that defines it.** Whole modules are included (no tree shaking), so write one component per module and import it by path. A file that re-exports many components (`index.js`) is fine to import from: `import { Button } from './ui/index.js'` is written against the module that defines `Button` (following `export { Button } from './button.js'` through any chain of re-exporting modules), so the page gets `button.js` and neither `index.js` nor the other components it lists. Only a page that needs `index.js` itself has everything it re-exports: a namespace import (`import * as ui`), a side-effect import, a dynamic import, or a name `index.js` defines for itself. Write the re-export as a list of names, `export { Button, Card as Panel } from './ui/card.js';`, one statement from one file, starting its line; `export * from` is a build error (list the names), as is re-exporting a stylesheet.
+- **Import what a page uses, from the module that defines it.** Whole modules are included unless `treeShake` is on ("Tree shaking", below), so write one component per module and import it by path: what a tool cannot show to be unused stays, and one component per module is how a page gets only what it uses with no tool at all. A file that re-exports many components (`index.js`) is fine to import from: `import { Button } from './ui/index.js'` is written against the module that defines `Button` (following `export { Button } from './button.js'` through any chain of re-exporting modules), so the page gets `button.js` and neither `index.js` nor the other components it lists. Only a page that needs `index.js` itself has everything it re-exports: a namespace import (`import * as ui`), a side-effect import, a dynamic import, or a name `index.js` defines for itself. Write the re-export as a list of names, `export { Button, Card as Panel } from './ui/card.js';`, one statement from one file, starting its line; `export * from` is a build error (list the names), as is re-exporting a stylesheet.
 - **Put what several pages use in a module they all import** (a layout, a shared namespace, shared components). It lands in a `shared-` chunk that is downloaded once and cached.
 - **List a namespace only on the pages that need it.** Its `resources` run on every page that lists it, and its code ships in that page's chunks.
 - **List the plugins a page needs** (`plugins: [withResources]`): a page without data does not download the resources code.
@@ -196,6 +197,7 @@ The generated file is third-party code: the framework imports nothing from it, a
 | `hash` | Content hashes in file names, default `true`. |
 | `sourceMaps` | `true` writes a `<chunk>.js.map` next to every chunk and ends the chunk with `//# sourceMappingURL=...`; the manifest lists it as `sourceMap`. Default `false`. See "Source maps". `agent-ui build --source-maps` turns it on for one build. With `transform`, the transform returns its own map (below). |
 | `minify` | Strip comments and layout whitespace from JavaScript and CSS. Names are never changed, so the output stays greppable and stack traces readable. Off in `--dev`. |
+| `treeShake` | `(code, { file, keep, sourceMap }) => result`, or `esbuildTreeShake(esbuild)`: leaves out what no page uses. Default: off, whole modules are included. See "Tree shaking". |
 | `transform` | `(code, { file, kind, sourceMap }) => result`, run after `minify` on every chunk. `kind` is `'javascript'` or `'css'`, `file` the chunk's name. `sourceMap` is `true` for a JavaScript chunk when `sourceMaps` is on: the transform then returns `{ code, map }`, its code and its own source map (an object or its JSON); otherwise it returns the code as a string. Any other result is a build error with the fix. Plug a real minifier in here, for example esbuild's `transformSync(code, { minify: true, format: 'esm' }).code`. `examples/events/build.config.mjs` does this for production builds only, with source maps (`transform: dev ? undefined : ...`, with `loader: 'css'` for stylesheets): the runtime chunk goes from 48.1 KB to 25.2 KB (gzip 13.0 to 10.3 KB). Names of exports and imports between chunks are kept, so chunks still load each other. The minifier is the project's own `devDependency`; the framework imports nothing. |
 | `replaceModules` | `{ 'src/validate.js': 'build/stubs/validate-omitted.js' }`: use another file's source for a module. This is how the validator, the runtime's own message checks (`src/runtime-checks.js`), the builders' checks, the page checks and the checks of shells and `syncApps` are left out of production builds, and the server-only half of pages (`src/pages-server.js`) out of every browser bundle. |
 | `api` | Path of a Node module exporting `createApi({ root })`: the project's JSON endpoints and form handlers. Used by `agent-ui serve` for the HTTP endpoints. It does not answer the page's own data requests while rendering; `fetchFunction` does. |
@@ -239,6 +241,31 @@ A misspelt or unknown option, a missing value, a port that is not a whole number
 Validation exists to catch mistakes while writing specs, so ship without it. The exception is an app that generates specs at runtime in the browser: build it with `agent-ui build --validator=include`.
 
 The stripper, `build/strip.mjs`, is a small scanner that understands strings, template literals, regex literals and comments. It keeps newlines, so automatic semicolon insertion is unchanged. Unit tests cover it.
+
+### Tree shaking
+
+Without it a module is included whole: an export no page imports, and a function nothing calls, are downloaded by every page that imports the module. `treeShake` leaves them out. It is **opt-in** and the framework has no dependencies, so the part that has to understand code is a tool of the project, esbuild:
+
+```js
+import * as esbuild from 'esbuild';
+import { esbuildTreeShake } from '@ehtb/agent-ui/build/tree-shake.mjs';
+
+export default ({ dev = false } = {}) => ({
+  ...frameworkBuildOptions({ dev, projectRoot }),
+  treeShake: dev ? undefined : esbuildTreeShake(esbuild, { pure: ['defineElement'] }),
+});
+```
+
+How it works, because it decides what stays. The bundler owns the module graph, so it decides **which names are used**; the tool decides **what in a module is dead code**.
+
+1. Every module has the exports that something uses: the names the modules that import it bind, all of them for a namespace import (`import * as ui`), for an entry and for a module a dynamic `import()` loads. A name a module only re-exports is used in the module that defines it (the bundler already imports it from there).
+2. The tool gets the module's code (the bundler took the import and export statements out) and `keep`, the names that must stay, and returns the code without the top-level declarations it can show to be unused. It never sees the other modules. esbuild keeps what it cannot show to be harmless: **a call at the top level of a module stays**, and so does the declaration that holds its result (`const table = makeTable()`). It knows a few built-ins (`Symbol()`, `new Set()`); another call is marked pure with `/* @__PURE__ */` before it, or by name in `pure: [...]`.
+3. An import that the remaining code no longer mentions is dropped, which makes more exports of the module it came from unused. Steps 1 to 3 repeat until nothing changes.
+4. A module with nothing left (no code, no export that is used, no stylesheet, no import it needs) leaves the graph, with its chunk; so does an `import()` target whose call was left out. A module that does something when it is imported, a side-effect import, and a module with a stylesheet stay.
+
+It runs once on the whole graph, before chunks are planned, so a module that several pages share keeps what any of them uses. A call to `treeShake` that throws, returns the wrong shape or returns code with an import or export statement is a build error naming the module. `agent-ui check --performance` does not report an unused export when `treeShake` is on, because the build leaves it out. What it saves depends on the site: it takes out what the project's own code leaves unused, not a package that was already bundled (Tiptap in a vendor file): `examples/events` has 2.3% to 2.7% less JavaScript to download at startup, and an app whose code is mostly used and whose weight is a vendor file less than 1%. Test the shaken build as you test any other: it runs different code than the source does.
+
+With `sourceMaps`, the tool returns `{ code, map }` (`esbuildTreeShake` does) and the build follows its map back to the lines of the source file, as it does for a `transform`.
 
 ### Source maps
 
@@ -421,7 +448,7 @@ A check is `{ name, node }`; the name is lower-case words joined by dashes, uniq
 
 `forbidTags({ tag: fix, ... }, name?)` fails a tag that a page writes directly (`madeBy === null`): the `button` inside the `Button` component is that component's own, and is where the fix sends the page. A tag that is not in the grammar and an empty fix are errors where `forbidTags` is called; a second `forbidTags` without its own name, like any other duplicate name, is an error when the configuration is read. A check that throws, or that returns something that is not `{ problem, fix }`, is reported as a problem of its own. A check reads data and runs in Node: it never reaches the browser.
 
-What `madeBy` knows comes from `expandComponents`, in the process that builds the page (`agent-ui check`, a production build): a spec that was not expanded by it, or whose nodes were copied afterwards, has no author recorded and every node counts as written directly.
+What `madeBy` knows comes from `expandComponents`, or from `markMadeBy` for a component written as a plain function (`return markMadeBy('Dialog', div(null, ...), children)`; `docs/API.md`, "Components"), in the process that builds the page (`agent-ui check`, a production build): a spec that was not expanded by it, or whose nodes were copied afterwards, has no author recorded and every node counts as written directly.
 
 ## Production checklist
 
@@ -445,7 +472,7 @@ A build is not a deployment. Before a real site goes out:
 
 The pipeline leaves these out on purpose, to stay dependency free:
 
-- no tree shaking: whole modules are included;
+- tree shaking is opt-in and done by a tool you plug in (`treeShake`; esbuild is supported): without it whole modules are included;
 - source maps are opt-in (`sourceMaps: true`), one per JavaScript chunk, precise to the source line (not the column); with `transform`, the minifier supplies its map;
 - no identifier mangling: comments and whitespace only, use `transform` for a real minifier;
 - no CSS processing beyond resolving `page.css`/`pages/style.css` `@import`s and concatenating the files of a chunk: no URL rewriting, no scoping, no nesting, no autoprefixing;

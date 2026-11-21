@@ -2,7 +2,8 @@
 // A function of the build mode returning options; the framework's own settings come from frameworkBuildOptions.
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { transformSync } from 'esbuild';
+import * as esbuild from 'esbuild';
+import { esbuildTreeShake } from '@ehtb/agent-ui/build/tree-shake.mjs';
 import { frameworkBuildOptions } from '@ehtb/agent-ui/build/presets.mjs';
 import { fetchFunction } from './server-fetch.mjs';
 
@@ -14,10 +15,12 @@ export default ({ dev = false, validator } = {}) => ({
   // its own source map, which the build follows back to the source files. Development builds stay readable. Names of exports and
   // imports between chunks are kept; only local names change.
   sourceMaps: !dev,
+  // Production only: esbuild also leaves out what no page uses (docs/BUILD.md, "Tree shaking"): an export nothing imports, a function nothing calls.
+  treeShake: dev ? undefined : esbuildTreeShake(esbuild),
   transform: dev
     ? undefined
     : (code, { kind, sourceMap }) => {
-        const result = transformSync(code, { minify: true, format: 'esm', loader: kind === 'css' ? 'css' : 'js', sourcemap: sourceMap ? 'external' : false });
+        const result = esbuild.transformSync(code, { minify: true, format: 'esm', loader: kind === 'css' ? 'css' : 'js', sourcemap: sourceMap ? 'external' : false });
         return sourceMap ? { code: result.code, map: result.map } : result.code;
       },
   publicDir: 'public', // events.json, terms.html (plain static HTML)

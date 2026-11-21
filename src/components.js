@@ -46,7 +46,7 @@
 // in `props.class` the result is also trimmed and its spaces collapsed, so an empty `class` param leaves no gap.
 // Problems are returned together as `path: message` lines, like the validator, and thrown as one Error.
 
-import { didYouMean } from './messages.js';
+import { didYouMean, fail } from './messages.js';
 import { isBinding, isPlainObject, toArray } from './spec-core.js';
 import { SPEC_SLOTS } from './spec-walk.js';
 
@@ -82,6 +82,32 @@ const writtenBy = () => {
 // the node was written directly: in a view, in a layout, or passed to a component as `children` or as a param (whoever wrote it
 // there is the author, and a component that passes it on does not become its author).
 export const madeBy = (node) => (globalThis[MADE_BY] ? globalThis[MADE_BY].get(node) ?? null : null);
+
+// For a component written as a plain function (not made with `defineElement`, so `expandComponents` never sees its definition): says that the
+// nodes it returns are its own. `passedIn` is what the page gave it, `children` or a param (a node or a list of them): those nodes stay the
+// page's, with everything below them. A node that already has an author (made by another component the function uses) keeps it. Returns `node`,
+// so a component ends with `return markMadeBy('Dialog', div(...), children)`. Only the nodes are marked, not props or handlers; the record is
+// beside the spec, as `expandComponents` keeps it, and `expandComponents` keeps it when it copies a node.
+export const markMadeBy = (name, node, passedIn = []) => {
+  if (typeof name !== 'string' || name === '') fail('markMadeBy', `the name must be the component's name, a non-empty string, got ${JSON.stringify(name)}`, "Write return markMadeBy('Dialog', node, children)");
+  if (!isPlainObject(node)) fail(`markMadeBy('${name}')`, `the second argument must be the node the component returns (a plain object made with the builders), got ${Array.isArray(node) ? 'an array' : node === null ? 'null' : typeof node}`, `Write return markMadeBy('${name}', div(...), children), one node; wrap several in a div or a fragment node`);
+  const pageNodes = new Set();
+  const collect = (value) => {
+    if (Array.isArray(value)) return value.forEach(collect);
+    if (!isPlainObject(value)) return;
+    pageNodes.add(value);
+    for (const slotName of SPEC_SLOTS) if (slotName in value) collect(value[slotName]);
+  };
+  collect(passedIn);
+  const mark = (value) => {
+    if (Array.isArray(value)) return value.forEach(mark);
+    if (!isPlainObject(value) || pageNodes.has(value)) return;
+    if (!writtenBy().has(value)) writtenBy().set(value, name);
+    for (const slotName of SPEC_SLOTS) if (slotName in value) mark(value[slotName]);
+  };
+  mark(node);
+  return node;
+};
 const isSlotNode = (node) => isPlainObject(node) && 'slot' in node && Object.keys(node).length === 1;
 
 // Reads one component's `params` (a list of names, or an object of declarations) into a Map of normalized declarations.
@@ -335,7 +361,8 @@ export const expandComponents = (spec, componentList = {}) => {
       return Array.isArray(result) ? result : [result];
     });
     if (!isPlainObject(node)) return node;
-    const author = passedIn.has(node) ? passedIn.get(node) : owner;
+    // A node a plain function component marked (markMadeBy) keeps its author when it is copied here.
+    const author = madeBy(node) ?? (passedIn.has(node) ? passedIn.get(node) : owner);
     if ('use' in node) {
       const definition = declared[node.use];
       const unknownKeys = Object.keys(node).filter((key) => !['use', 'with', 'children'].includes(key));

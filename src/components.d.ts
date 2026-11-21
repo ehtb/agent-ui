@@ -24,6 +24,12 @@ export function expandComponents(spec: object, components?: Record<string, Compo
 /** The name of the component whose definition wrote this node of an expanded spec, or null when it was written directly (in a view or layout, or passed to a component as children or a param). For project checks (`@ehtb/agent-ui/checks`). */
 export function madeBy(node: object): string | null;
 
+/**
+ * For a component written as a plain function (not made with `defineElement`): says that the nodes it returns are its own, so `madeBy` names it for a project check.
+ * `passedIn` is what the page gave the component (`children`, a param): those nodes, and everything below them, stay the page's. Returns `node`: `return markMadeBy('Dialog', div(...), children)`.
+ */
+export function markMadeBy<Node extends object>(name: string, node: Node, passedIn?: object | object[]): Node;
+
 type Declarations = Record<string, ParamDeclaration>;
 type OptionKeys<Declaration> = Declaration extends { options: infer Options } ? keyof Options & string : never;
 type ParamValue<Declaration> = [OptionKeys<Declaration>] extends [never] ? unknown : OptionKeys<Declaration>;

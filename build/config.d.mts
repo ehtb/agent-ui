@@ -24,6 +24,12 @@ export interface BuildConfig {
   minify?: boolean;
   /** With `sourceMap: true` (sourceMaps is on and the chunk is JavaScript) return `{ code, map }`: the minifier's code and its own source map; otherwise the code. */
   transform?: ((code: string, context: { file: string; kind: 'javascript' | 'css'; sourceMap: boolean }) => string | { code: string; map: string | object }) | null;
+  /**
+   * Leaves out what no page uses (docs/BUILD.md, "Tree shaking"). Called for every module with its code (no import or export statement) and the names that
+   * must stay; returns the code without the top-level declarations it can show to be unused (with `sourceMap: true` return `{ code, map }`). Use
+   * `esbuildTreeShake(esbuild)` from `@ehtb/agent-ui/build/tree-shake.mjs`. Default: off, whole modules are included.
+   */
+  treeShake?: ((code: string, context: { file: string; keep: string[]; sourceMap: boolean }) => string | { code: string; map: string | object }) | null;
   manualChunks?: Record<string, string[]>;
   /** Chunks that are not a page's own and are smaller than this many bytes of source are folded into a bigger chunk (default 4096; 0 turns it off). */
   minSharedChunkBytes?: number;

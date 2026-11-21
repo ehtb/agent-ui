@@ -158,7 +158,7 @@ test('every route is rendered for its URL, with real links and the right status'
   assert.equal(detail.status, 200);
   assert.ok(markup(detail.html).includes('Hands-on: server rendering'));
   assert.ok(!markup(detail.html).includes('Friday social')); // only this event is in the markup
-  assert.deepEqual(embeddedState(detail.html).route, { params: { id: '2' }, hydrated: false });
+  assert.deepEqual(embeddedState(detail.html).route, { params: { id: '2' }, query: {}, hydrated: false });
 
   const missing = await get('/event/999');
   assert.equal(missing.status, 404);

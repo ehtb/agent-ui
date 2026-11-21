@@ -120,9 +120,14 @@ export const generateChunks = ({ projectRoot, graph, plan, hash = true, minify =
     // `lines` is the text of the chunk in pieces; `origins` says, for each line of the chunk, which line of which module it is.
     const lines = [];
     const origins = [];
+    // `origin.lines`, when a module was shaken, says for each line of its code which line of the source it is (null: none); otherwise its lines
+    // are the source's from `origin.line` on.
     const add = (text, origin = null) => {
       lines.push(text);
-      text.split('\n').forEach((_, index) => origins.push(origin && { path: origin.path, line: origin.line + index }));
+      text.split('\n').forEach((_, index) => {
+        const line = origin?.lines ? origin.lines[index] ?? null : origin && origin.line + index;
+        origins.push(line == null ? null : { path: origin.path, line });
+      });
     };
     add(`// chunk: ${chunk.name} (${chunk.reason})`);
 
@@ -152,7 +157,7 @@ export const generateChunks = ({ projectRoot, graph, plan, hash = true, minify =
         exportedName === localName ? exportedName : `${exportedName}: ${localName}`,
       );
       add(['', `// ---- ${path} ----`, `const ${variableOfModule.get(path)} = (() => {`, ...record.importStatements].join('\n'));
-      add(record.body, { path, line: record.firstLine });
+      add(record.body, { path, line: record.firstLine, lines: record.lines ?? null });
       add([exportList.length ? `return { ${exportList.join(', ')} };` : 'return {};', '})();'].join('\n'));
     }
 

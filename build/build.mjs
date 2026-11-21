@@ -1,6 +1,7 @@
 // The build pipeline: four small stages, each a plain function you can run and test on its own.
 //
 //   1. buildModuleGraph   read and parse every module reachable from the entries         (module-graph.mjs)
+//      shakeGraph         with `treeShake`: leave out what no page uses                   (tree-shake.mjs)
 //   2. assignChunks       decide which modules are bundled together                      (assign-chunks.mjs)
 //   3. generateChunks     emit readable ES module chunks and CSS files with hashed names (generate-chunks.mjs)
 //   4. writeSite          write chunks, one HTML page per entry, manifest.json           (write-site.mjs)
@@ -10,6 +11,7 @@
 // and the build follows it back to the source files.
 import { dirname } from 'node:path';
 import { buildModuleGraph } from './module-graph.mjs';
+import { shakeGraph } from './tree-shake.mjs';
 import { assignChunks } from './assign-chunks.mjs';
 import { generateChunks } from './generate-chunks.mjs';
 import { assertSafeOutputDirectory, writeSite } from './write-site.mjs';
@@ -36,6 +38,7 @@ export const build = (config) => {
     configFile = null,
     minify = false,
     transform = null,
+    treeShake = null,
     sourceMaps = false,
     cssOverrides = new Map(),
     styleSources = [],
@@ -48,7 +51,8 @@ export const build = (config) => {
   if (!Array.isArray(entryList) || !entryList.length) throw new Error('no entries found');
 
   assertSafeOutputDirectory({ projectRoot, outDir, entryPaths: entryList.map((entry) => dirname(entry.path)), publicDirectories: toArray(publicDir) });
-  const graph = buildModuleGraph({ projectRoot, entries: entryList, replacements: replaceModules });
+  const readGraph = buildModuleGraph({ projectRoot, entries: entryList, replacements: replaceModules });
+  const graph = treeShake ? shakeGraph({ graph: readGraph, treeShake, sourceMaps }) : readGraph;
   const plan = assignChunks(graph, { projectRoot, manualChunks, ...(minSharedChunkBytes !== undefined && { minSharedChunkBytes }) });
   const generated = generateChunks({ projectRoot, graph, plan, hash, minify, transform, sourceMaps, cssOverrides });
   const manifest = writeSite({ projectRoot, outDir, assetsDir, basePath, graph, plan, generated, publicDir, alsoStamped: [...pages.map((page) => page.viewFile), ...styleSources, configFile].filter(Boolean) });
@@ -69,5 +73,5 @@ export const build = (config) => {
     }
   }
   // Not written to manifest.json: what the build says about itself, printed by formatReport.
-  return { ...manifest, warnings: findViewCodeInBrowserBundle(graph) };
+  return { ...manifest, warnings: findViewCodeInBrowserBundle(graph), ...(graph.treeShaking && { treeShaking: graph.treeShaking }) };
 };
