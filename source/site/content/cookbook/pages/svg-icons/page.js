@@ -1,6 +1,6 @@
 // Recipe: icons and a small chart in SVG.
-// SVG is a closed set of tags (svg, g, path, circle, ellipse, rect, line, polyline, polygon, use): its shapes stand inside an svg, and
-// an svg either says what it shows (role: 'img' with aria-label) or is decoration next to text that says it ('aria-hidden': 'true').
+// SVG tags stand inside an svg (shapes, text, gradients, filters; recipe `svg-chart` has the text and the gradient), and an svg either says
+// what it shows (role: 'img' with aria-label) or is decoration next to text that says it ('aria-hidden': 'true').
 // What is drawn from data is computed in `derive`, like any other value: the stars to show, and the points of the line.
 const rating = {
   state: { value: 3 },

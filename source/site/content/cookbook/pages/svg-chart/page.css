@@ -1,0 +1,7 @@
+/* The chart takes the colour of the text around it (the gradient uses currentColor); a picked bar is darker. */
+#chart-page svg { width: 100%; max-width: 28rem; color: #3b6fd4; }
+#chart-page g rect { opacity: 0.75; }
+#chart-page g.picked rect { opacity: 1; }
+#chart-page text { fill: #333; font-family: system-ui, sans-serif; }
+#months { display: flex; gap: 0.5rem; padding: 0; list-style: none; }
+#months button[aria-pressed="true"] { font-weight: 700; }

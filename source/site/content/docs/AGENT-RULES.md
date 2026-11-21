@@ -133,6 +133,7 @@ Everything else external is a plugin, and plugins are optional: a page lists onl
 | `withHead` | `@ehtb/agent-ui/head` | `head` is a function of the state |
 | `withFollow` | `@ehtb/agent-ui/follow` | the spec uses `follow` |
 | `withMoves` | `@ehtb/agent-ui/moves` | rows with `transition` should slide when the list reorders |
+| `withPerformance` | `@ehtb/agent-ui/performance` | development performance guidance aligned with Lighthouse (stubbed in production) |
 | `withNavigation` (a shell lists it) | `@ehtb/agent-ui/navigation` | `soft` links and `route.go` between the shell's pages |
 | `withPrefetch` (a shell lists it after `withNavigation`) | `@ehtb/agent-ui/prefetch` | a soft link's page should load on hover (every hover renders a page on the server) |
 | `withViewTransition` (a shell lists it after `withNavigation`) | `@ehtb/agent-ui/view-transition` | the swap of a soft navigation should animate |
@@ -147,7 +148,7 @@ A plugin you write:
 
 ## 7. Verify
 
-`agent-ui check` validates every page's finished spec, every literal link and the data the page loads, without a browser. It reports a duplicate or missing list key anywhere in the spec. Run it before you finish.
+`agent-ui check` validates every page's finished spec, every literal link and the data the page loads, without a browser. It reports a duplicate or missing list key anywhere in the spec, and the rules the project added itself (`checks` in `build.config.mjs`, `docs/BUILD.md`, "Project checks"): fix those lines as you fix the others. Run it before you finish.
 
 In a test, use the agent API:
 
@@ -172,7 +173,7 @@ assertNoErrors(ui);
 - Writing another namespace directly instead of through `calls`, or doing `fetch`/timers inside an action instead of a resource or plugin.
 - A handler invented on the spot: declare the action and its arguments first.
 - A literal `href` that starts with `/` and is not a page, a file in `publicDir` or an API path. `agent-ui check` reports it.
-- `export *`, re-exports or default imports/exports in your own files, which the bundler does not support (`agent-ui check` reports them). Use named imports and relative paths with the extension. A package written with `export *` (zod, Tiptap) is imported by name and, for the browser, given a one-file esbuild build through `replaceModules` (BUILD.md, "Vendor files").
+- `export *` or default imports/exports in your own files, which the bundler does not support (`agent-ui check` reports them). Use named imports and relative paths with the extension; a module that lists names, `export { Button, Card } from './parts.js';`, is fine to import from, and a page only gets the modules that define the names it imports. A package written with `export *` (zod, Tiptap) is imported by name and, for the browser, given a one-file esbuild build through `replaceModules` (BUILD.md, "Vendor files").
 - Editing `dist/` or `.agent-ui/`: both are generated. Change the source and rebuild.
 - A session token in state: the state is in the document and reaches the browser. Keep it in an `HttpOnly` cookie set by the API or a form, and put only public data in `initialStateFor`.
 - A derived value that is not a function of the state: `Date.now()`, `new Date()`, `Math.random()`, a counter, or `toLocaleString()` and `Intl` without an explicit locale and `timeZone`. The server and the browser render the page at another time and place, so the browser makes those nodes again (`AUI0305`). Keep the time or the id in state, written by an action or an API response. `agent-ui check` reports it.
@@ -187,7 +188,7 @@ assertNoErrors(ui);
 - No modal/popover component with a focus trap (copy recipe `modal`), no file-upload parser or `multipart` body, and no SSE or WebSocket endpoint. Receive uploads and long-lived connections in the host server.
 - No built-in internationalization, locale-aware URLs or right-to-left layout. Text and `dir` are ordinary state and attributes; the project owns the catalogue.
 - No scroll restoration inside scrolling containers (the window's position is restored on back and forward). A site below a path is `basePath` in `build.config.mjs`; write every URL of the site as if it were at the root.
-- No SVG beyond icons and simple drawings: `svg`, `g`, `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, `polygon`, `use`. A chart is a library drawn by a plugin (recipe `draw-into-element`), no canvas or media tags.
+- No `script`, `style` or `switch` in an SVG, no `xmlns` or `xlink:href` (the namespace is put there for you; `href` is the attribute), no canvas or media tags. Text, gradients, filters and `foreignObject` are in the grammar and checked (`docs/API.md`, section 3, "SVG"; recipes `svg-icons`, `svg-chart`); a chart with zoom or thousands of marks is a library drawn by a plugin (recipe `draw-into-element`).
 - No TypeScript compile step. The package ships hand-written `.d.ts` files, so `// @ts-check` gives editor checking without a build; `examples/with-typescript` is a checked app.
 - No session store, auth flow or CSP policy. The render server passes the request to `initialStateFor`, `stateForBrowser` and `transformResponse`; keep the session token in an `HttpOnly` cookie set by the API or a form, and write the policy in your server.
 

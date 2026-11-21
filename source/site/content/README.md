@@ -13,7 +13,7 @@ agent-ui describes a UI as plain JSON, written with small typed builders. State 
 
 Because the page, its state and everything it can do are data, an agent can render, inspect and test a page in Node, in milliseconds, without a browser.
 
-agent-ui is small (about 53 KB, 14 KB gzipped), [dependency-free](package.json) and [extendable](#built-in-plugins).
+agent-ui is small (about 54 KB, 15 KB gzipped), [dependency-free](package.json) and [extendable](#built-in-plugins).
 
 ## Motivation
 
@@ -104,7 +104,7 @@ State is plain JSON, replaced and never changed in place. Every action is logged
 
 ## Built-in plugins
 
-Plugins are optional: a page lists the ones it needs in `page.js` and downloads only those. A plugin of your own is `(api) => void`, and talks to the app through `api.watch` and `api.dispatch`.
+Plugins are optional: a page lists the ones it needs in `page.js` and downloads only those. A plugin of your own is `(environment) => (api) => void` (or `(api) => void` for `app()`), and talks to the app through `api.watch` and `api.dispatch`.
 
 | Plugin             | Import                         | Use it when                                                           |
 | ------------------ | ------------------------------ | --------------------------------------------------------------------- |
@@ -113,9 +113,10 @@ Plugins are optional: a page lists the ones it needs in `page.js` and downloads 
 | withHead           | @ehtb/agent-ui/head            | The document's `<head>` depends on state                              |
 | withFollow         | @ehtb/agent-ui/follow          | A dragged row follows the pointer                                     |
 | withMoves          | @ehtb/agent-ui/moves           | Reordered rows slide to their place                                   |
+| withPerformance    | @ehtb/agent-ui/performance     | Development performance checks aligned with Lighthouse                |
 | withNavigation     | @ehtb/agent-ui/navigation      | A shell has `soft: true` links that swap the page without a full load |
-| withPrefetch       | @ehtb/agent-ui/prefetch        | A shell fetches a soft link's page when the visitor hovers it         |
-| withViewTransition | @ehtb/agent-ui/view-transition | A shell animates the swap of a soft navigation                        |
+| withPrefetch       | @ehtb/agent-ui/prefetch        | A shell fetches a soft link's page on hover, press or viewport entry  |
+| withViewTransition | @ehtb/agent-ui/view-transition | A shell animates the page swap of a soft navigation                   |
 
 ## Installing
 
@@ -136,7 +137,7 @@ export default ({ dev = false, validator } = {}) => ({
 agent-ui build         write dist/ (--dev keeps the validator, --static renders every page to a file)
 agent-ui dev           serve with hot reload: the edited page is swapped in place and keeps its state
 agent-ui serve         serve the build on localhost:8080, rendering pages (for trying, not for production)
-agent-ui check         render every page headlessly and report spec, link, data and size problems
+agent-ui check         render every page headlessly and report spec, link, data, size and (--performance) Lighthouse problems
 agent-ui explain       print the one valid form of a recipe or a part of the grammar
 agent-ui schema        write the JSON Schema of the spec
 agent-ui init          write the rules for agents into the project's AGENTS.md
