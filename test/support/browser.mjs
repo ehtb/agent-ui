@@ -48,8 +48,14 @@ export const launchBrowser = async () => {
   const cleanups = [];
   const profile = mkdtempSync(join(tmpdir(), 'agent-ui-chrome-'));
   // A CI runner (Ubuntu with unprivileged user namespaces restricted) cannot start Chrome's sandbox; the runner is the sandbox there.
-  const sandboxArguments = process.env.CI ? ['--no-sandbox'] : [];
-  const child = spawn(executable, ['--remote-debugging-port=0', `--user-data-dir=${profile}`, '--headless=new', '--no-first-run', '--disable-gpu', ...sandboxArguments, 'about:blank'], { stdio: 'ignore' });
+  // Its /dev/shm is small, and Chrome that runs out of it dies at start, so Chrome uses the temporary folder instead.
+  const sandboxArguments = process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : [];
+  const child = spawn(executable, ['--remote-debugging-port=0', `--user-data-dir=${profile}`, '--headless=new', '--no-first-run', '--disable-gpu', ...sandboxArguments, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  // What Chrome says when it does not start is the only way to tell why; keep the end of it for the error.
+  let chromeOutput = '';
+  child.stderr.on('data', (chunk) => {
+    chromeOutput = (chromeOutput + chunk).slice(-2000);
+  });
   cleanups.push(async () => {
     child.kill();
     await new Promise((resolve) => (child.exitCode !== null || child.signalCode !== null ? resolve() : child.once('exit', resolve)));
@@ -63,7 +69,8 @@ export const launchBrowser = async () => {
   }
   if (!port) {
     await closeAll(cleanups);
-    throw new Error(`Chrome (${executable}) did not start. Set CHROME_PATH to another build, or skip browser tests`);
+    const exited = child.exitCode !== null || child.signalCode !== null ? ` It exited with ${child.exitCode ?? child.signalCode}.` : '';
+    throw new Error(`Chrome (${executable}) did not start.${exited} Set CHROME_PATH to another build, or skip browser tests${chromeOutput ? `. What Chrome said:\n${chromeOutput.trim()}` : ''}`);
   }
 
   // `beforeLoad` is a script the browser runs in the page before any script of the page does (for a test that watches what the page does while it starts).
